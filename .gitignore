@@ -1,0 +1,6 @@
+node_modules
+.env
+local-turso.db
+*.log
+web/node_modules
+web/dist
