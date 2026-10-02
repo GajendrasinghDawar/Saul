@@ -1,0 +1,82 @@
+import { db } from "../db/index.ts";
+import * as schema from "../db/schema.ts";
+import { eq, desc } from "drizzle-orm";
+import crypto from "crypto";
+
+export async function setRun(runId: string, status: string) {
+  // Check if run exists first
+  const existing = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
+  if (existing.length === 0) {
+    await db.insert(schema.runs).values({ id: runId, status });
+  } else {
+    await db.update(schema.runs).set({ status }).where(eq(schema.runs.id, runId));
+  }
+}
+
+export async function logAgentActivity(runId: string, type: string, message: string) {
+  await db.insert(schema.agentEvents).values({
+    id: crypto.randomUUID(),
+    runId,
+    type,
+    message,
+  });
+}
+
+// In the course, agentState gathers the full context (world state + recent events)
+export async function agentState(runId: string, incomingMessage?: string) {
+  // Gather recent events to give the LLM context of what it just did
+  const recentEvents = await db
+    .select()
+    .from(schema.agentEvents)
+    .where(eq(schema.agentEvents.runId, runId))
+    .orderBy(desc(schema.agentEvents.createdAt))
+    .limit(5);
+
+  // Gather world state (for Lali, the world state is the pending todos)
+  const pendingTodos = await db
+    .select()
+    .from(schema.todos)
+    .where(eq(schema.todos.status, 'pending'));
+
+  return {
+    incomingMessage,
+    recentEvents: recentEvents.reverse(), // chronologically
+    world: {
+      pendingTodos,
+    }
+  };
+}
+
+export async function recordDecision(runId: string, action: string, reason: string) {
+  await logAgentActivity(runId, 'decision', `Decision: ${action} - ${reason}`);
+}
+
+export async function recordToolAction(runId: string, tool: string, detail: string) {
+  await logAgentActivity(runId, 'tool', `Tool Executed: ${tool} -> ${detail}`);
+}
+
+export async function proposeAction(runId: string, action: string, detail: string) {
+  const proposalId = crypto.randomUUID();
+  await db.insert(schema.approvals).values({
+    id: proposalId,
+    action,
+    detail,
+    status: 'pending'
+  });
+  
+  await logAgentActivity(runId, 'human', `Waiting for approval on: ${action}`);
+  return proposalId;
+}
+
+// Helper for tools to modify the world state directly
+export async function saveTodo(title: string) {
+  await db.insert(schema.todos).values({
+    id: crypto.randomUUID(),
+    title,
+    status: 'pending'
+  });
+}
+
+export async function clearTodos() {
+  await db.update(schema.todos).set({ status: 'completed' }).where(eq(schema.todos.status, 'pending'));
+}

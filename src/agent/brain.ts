@@ -19,10 +19,10 @@ function model() {
 const decisionSchema = z.object({
   action: z.enum(ACTIONS),
   reason: z.string(),
-  detail: z.string().optional(),
+  detail: z.string().describe("Additional detail for the action, or an empty string if none is needed."),
 });
 
-type Decision = { action: ActionName; reason: string; detail?: string };
+type Decision = { action: ActionName; reason: string; detail: string };
 
 export async function chooseAction(state: any): Promise<Decision> {
   const isMessage = !!state.incomingMessage;

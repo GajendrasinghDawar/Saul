@@ -4,3 +4,9 @@ local-turso.db
 *.log
 web/node_modules
 web/dist
+
+.agents/
+
+docs/temp/
+
+skills-lock.json
