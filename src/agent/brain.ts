@@ -1,25 +1,40 @@
-import { createOpenAI } from "@ai-sdk/openai";
-import { generateObject } from 'ai';
-import { z } from 'zod';
+import { Type, type Model } from "@earendil-works/pi-ai";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { ACTIONS, type ActionName } from './types.ts';
 import dotenv from "dotenv";
 dotenv.config({ override: true });
 
-const aiProvider = createOpenAI({
-  baseURL: process.env.AZURE_OPENAI_BASE_URL,
-  apiKey: process.env.AZURE_OPENAI_API_KEY,
-});
+const models = builtinModels();
 
-function model() {
+function getModel(): Model<any> {
   const id = process.env.AZURE_OPENAI_MODEL || process.env.OPENAI_MODEL;
   if (!id) throw new Error('Set AZURE_OPENAI_MODEL in .env');
-  return aiProvider.chat(id);
+  
+  const isAzure = !!process.env.AZURE_OPENAI_MODEL;
+  const providerName = isAzure ? "azure-openai-responses" : "openai-responses";
+  
+  let model: Model<any> | undefined = models.getModel(providerName, id);
+  if (!model) {
+    model = {
+      id,
+      name: "Custom Model",
+      api: providerName as any,
+      provider: providerName as any,
+      baseUrl: isAzure ? (process.env.AZURE_OPENAI_BASE_URL || "") : "",
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 4096,
+      reasoning: false
+    };
+  }
+  return model;
 }
 
-const decisionSchema = z.object({
-  action: z.enum(ACTIONS),
-  reason: z.string(),
-  detail: z.string().describe("Additional detail for the action, or an empty string if none is needed."),
+const decisionSchema = Type.Object({
+  action: Type.Union(ACTIONS.map(a => Type.Literal(a))),
+  reason: Type.String(),
+  detail: Type.String({ description: "Additional detail for the action, or an empty string if none is needed." }),
 });
 
 type Decision = { action: ActionName; reason: string; detail: string };
@@ -42,11 +57,23 @@ If you read the todos and there are pending items, use send_digest_email and put
 If the email was sent, use complete.
 Keep your reason short.`;
 
-  const result = await generateObject({
-    model: model(),
-    schema: decisionSchema,
-    system: systemPrompt,
-    prompt: `Current observed state:\n${JSON.stringify(state, null, 2)}`,
-  });
-  return result.object;
+  const result = await models.completeSimple(
+    getModel(),
+    {
+      systemPrompt: systemPrompt + "\nCall the choose_action tool.",
+      messages: [{ role: "user", content: `Current observed state:\n${JSON.stringify(state, null, 2)}`, timestamp: Date.now() }],
+      tools: [{
+        name: "choose_action",
+        description: "Chooses the next action to take",
+        parameters: decisionSchema
+      }]
+    }
+  );
+  
+  const toolCall = result.content.find(c => c.type === "toolCall" && c.name === "choose_action");
+  if (!toolCall || toolCall.type !== "toolCall") {
+    throw new Error("Model failed to call choose_action tool.");
+  }
+  
+  return toolCall.arguments as Decision;
 }
