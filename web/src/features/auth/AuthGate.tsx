@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 import { initCsrfToken } from "../../lib/api";

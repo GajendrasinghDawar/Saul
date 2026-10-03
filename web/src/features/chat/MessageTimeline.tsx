@@ -15,9 +15,10 @@ type MessageTimelineProps = {
   scrollToBottom: () => void;
   onSuggestion: (text: string) => void;
   onFork?: (messageId: string) => void;
+  onSubmitMessage?: (text: string) => void;
 };
 
-export function MessageTimeline({ messages, activeRunId, containerRef, isAtBottom, scrollToBottom, onSuggestion, onFork }: MessageTimelineProps) {
+export function MessageTimeline({ messages, activeRunId, containerRef, isAtBottom, scrollToBottom, onSuggestion, onFork, onSubmitMessage }: MessageTimelineProps) {
   const reduceMotion = useReducedMotion();
   return (
     <div className="relative min-h-0 flex-1">
@@ -37,6 +38,8 @@ export function MessageTimeline({ messages, activeRunId, containerRef, isAtBotto
                   active={activeRunId === message.requestId}
                   isLast={index === messages.length - 1}
                   onFork={() => onFork?.(message.requestId)}
+                  onApprove={() => onSubmitMessage?.("Approved.")}
+                  onReject={() => onSubmitMessage?.("Rejected.")}
                 />
               ))}
           </div>

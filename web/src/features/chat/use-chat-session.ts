@@ -50,6 +50,13 @@ export function useChatSession(sessionId: string) {
           if (typeof entry.model[0]?.content === "string") text = entry.model[0].content;
           else if (Array.isArray(entry.model[0]?.content)) text = entry.model[0].content.map((c: any) => c.text).join("");
           
+          // Clean up pending messages that have been confirmed by the server
+          for (const [key, pm] of pendingMessagesRef.current.entries()) {
+            if (pm.content === text) {
+              pendingMessagesRef.current.delete(key);
+            }
+          }
+          
           msgs.push({
             role: "user",
             content: text,
@@ -89,7 +96,20 @@ export function useChatSession(sessionId: string) {
               let text = "";
               if (Array.isArray(res.content)) text = res.content.find((c: any) => c.type === "text")?.text || "";
               else text = res.content;
-              currentAssistantMsg.activities!.push("Result: " + String(text).substring(0, 50) + "...");
+              
+              if (text.startsWith("[APPROVAL REQUIRED]")) {
+                const proposalIdMatch = text.match(/Proposal ID: (.*?)\./);
+                if (proposalIdMatch) {
+                   currentAssistantMsg.effects!.push({
+                      id: proposalIdMatch[1],
+                      type: "approval",
+                      summary: "Action requires your approval",
+                      status: "pending"
+                   });
+                }
+              } else {
+                currentAssistantMsg.activities!.push("Result: " + String(text).substring(0, 50) + "...");
+              }
            }
         }
       }
@@ -157,9 +177,9 @@ export function useChatSession(sessionId: string) {
       
       if (!res.ok) throw new Error("Failed to send message");
       
-      // Once successfully delivered, we remove it from pending. 
-      // The SSE stream will catch it and render it as part of the official state.
-      pendingMessagesRef.current.delete(idempotencyKey);
+      // We no longer manually delete the pending message here!
+      // The SSE stream (processView) will match the content and delete it when the server confirms it,
+      // avoiding any UI flicker.
       
     } catch (e) {
       console.error("Failed to send message", e);

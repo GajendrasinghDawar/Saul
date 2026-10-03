@@ -57,6 +57,8 @@ export const sendDigestEmailTool = defineTool({
 });
 
 // We bundle the tools and the prompt into an Extension
+import { hook, ToolTask } from "@earendil-works/pi-durable";
+
 export const LaliExtension = defineExtension({
   name: "lali",
   sections: [
@@ -68,5 +70,44 @@ export const LaliExtension = defineExtension({
       return `Current Todos:\n${JSON.stringify(currentTodos, null, 2)}`;
     })
   ],
-  tools: [saveTodoTool, clearTodosTool, sendDigestEmailTool]
+  tools: [saveTodoTool, clearTodosTool, sendDigestEmailTool],
+  hooks: [
+    hook(ToolTask, {
+      beforeTool: async (call, api, ctx) => {
+        if (call.name === "clear_todos") {
+          const userId = await getUserIdForConversation(String(api.conversationId));
+          
+          const { approvals } = await import("../db/schema.ts");
+          const recentApprovals = await db.select().from(approvals)
+            .where(sql`${approvals.userId} = ${userId} AND ${approvals.action} = 'clear_todos'`)
+            .orderBy(sql`${approvals.id} DESC`) // Just grab the latest
+            .limit(1);
+            
+          const latest = recentApprovals[0];
+          
+          if (!latest || latest.status === 'pending' || latest.status === 'rejected') {
+            // If there's a pending one already, return that ID, else create a new one
+            let proposalId = latest?.status === 'pending' ? latest.id : crypto.randomUUID();
+            
+            if (!latest || latest.status === 'rejected') {
+              await db.insert(approvals).values({
+                id: proposalId,
+                userId,
+                action: 'clear_todos',
+                detail: 'Clear all pending todos',
+                status: 'pending'
+              });
+            }
+            
+            return { block: `[APPROVAL REQUIRED] Proposal ID: ${proposalId}. Please wait for the user to approve this action via the UI.` };
+          }
+          
+          // If it's approved, we let it run!
+          await db.update(approvals).set({ status: 'consumed' }).where(sql`${approvals.id} = ${latest.id}`);
+        }
+        
+        return {}; // Let other tools pass normally
+      }
+    })
+  ]
 });

@@ -55,6 +55,6 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
     }
   };
 
-  return <div className="flex size-full min-h-0 flex-col"><MessageTimeline messages={messages} activeRunId={activeRunId} containerRef={containerRef} isAtBottom={isAtBottom} scrollToBottom={scrollToBottom} onSuggestion={setDraft} onFork={handleFork} /><Composer draft={draft} setDraft={setDraft} stagedFiles={stagedFiles} fileInputRef={fileInputRef} onFiles={event => void handleFileChange(event)} onRemoveFile={file => setStagedFiles(current => current.filter(item => item.file !== file))} onSubmit={handleSubmit} onStop={() => void stop()} activeRunId={activeRunId} isCancelling={isCancelling} connectionStatus={connectionStatus} /></div>;
+  return <div className="flex size-full min-h-0 flex-col"><MessageTimeline messages={messages} activeRunId={activeRunId} containerRef={containerRef} isAtBottom={isAtBottom} scrollToBottom={scrollToBottom} onSuggestion={setDraft} onFork={handleFork} onSubmitMessage={(text) => void submitMessage(text)} /><Composer draft={draft} setDraft={setDraft} stagedFiles={stagedFiles} fileInputRef={fileInputRef} onFiles={event => void handleFileChange(event)} onRemoveFile={file => setStagedFiles(current => current.filter(item => item.file !== file))} onSubmit={handleSubmit} onStop={() => void stop()} activeRunId={activeRunId} isCancelling={isCancelling} connectionStatus={connectionStatus} /></div>;
 }
 

@@ -41,7 +41,7 @@ export async function uploadFile(sessionId: string, file: File): Promise<string>
 }
 
 export async function approveEffect(id: string, digest: string): Promise<void> {
-  const res = await fetchWithCsrf(`/api/effects/${id}/approve`, {
+  const res = await fetchWithCsrf(`/api/tasks/approvals/${id}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ digest })
@@ -50,8 +50,8 @@ export async function approveEffect(id: string, digest: string): Promise<void> {
 }
 
 export async function rejectEffect(id: string): Promise<void> {
-  const res = await fetchWithCsrf(`/api/effects/${id}/reject`, {
-    method: "POST",
+  const res = await fetchWithCsrf(`/api/tasks/approvals/${id}/reject`, {
+    method: "POST"
   });
   if (!res.ok) throw new Error("Failed to reject effect");
 }

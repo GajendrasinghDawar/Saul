@@ -68,7 +68,7 @@ export function createChatRouter({ harness, modelConfig }: AppDependencies, csrf
     const userId = res.locals.userId;
     
     const entry = await harness.commit(async (tx) => {
-      return (await tx.entry(messageIdNum, BACKGROUND_CONTEXT))?.entry;
+      return await tx.entry(messageIdNum);
     }, BACKGROUND_CONTEXT);
 
     if (!entry) return res.status(404).json({ error: "Message not found" });

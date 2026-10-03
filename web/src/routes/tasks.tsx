@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Activity } from "lucide-react";
+import { fetchWithCsrf } from "../lib/api";
 
 export const Route = createFileRoute("/tasks")({ component: TasksPage });
 
@@ -70,6 +71,20 @@ function TasksPage() {
                     }`}>
                       {task.status}
                     </span>
+                    {task.status === "running" && (
+                      <button 
+                        onClick={async () => {
+                          try {
+                            await fetchWithCsrf(`/api/tasks/${task.id}/abort`, { method: 'POST' });
+                          } catch (e) {
+                            alert('Failed to cancel task');
+                          }
+                        }}
+                        className="ml-2 rounded border border-red6 px-2 py-1 text-xs text-red11 hover:bg-red3 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </div>
                 </div>
                 {task.state && task.state.checkpoint && (
