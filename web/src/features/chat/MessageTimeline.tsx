@@ -14,9 +14,10 @@ type MessageTimelineProps = {
   isAtBottom: boolean;
   scrollToBottom: () => void;
   onSuggestion: (text: string) => void;
+  onFork?: (messageId: string) => void;
 };
 
-export function MessageTimeline({ messages, activeRunId, containerRef, isAtBottom, scrollToBottom, onSuggestion }: MessageTimelineProps) {
+export function MessageTimeline({ messages, activeRunId, containerRef, isAtBottom, scrollToBottom, onSuggestion, onFork }: MessageTimelineProps) {
   const reduceMotion = useReducedMotion();
   return (
     <div className="relative min-h-0 flex-1">
@@ -25,7 +26,7 @@ export function MessageTimeline({ messages, activeRunId, containerRef, isAtBotto
           <div className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
             {messages.length === 0 && <EmptyChat onSelect={onSuggestion} />}
             {messages.map((message, index) => message.role === "user"
-              ? <UserMessage key={`user-${message.requestId}`} content={message.content} />
+              ? <UserMessage key={`user-${message.requestId}`} content={message.content} onFork={() => onFork?.(message.requestId)} />
               : (
                 <AssistantMessage
                   key={`assistant-${message.requestId}`}
@@ -35,6 +36,7 @@ export function MessageTimeline({ messages, activeRunId, containerRef, isAtBotto
                   isComplete={message.isComplete}
                   active={activeRunId === message.requestId}
                   isLast={index === messages.length - 1}
+                  onFork={() => onFork?.(message.requestId)}
                 />
               ))}
           </div>

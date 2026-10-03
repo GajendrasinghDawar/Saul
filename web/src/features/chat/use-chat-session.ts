@@ -177,5 +177,19 @@ export function useChatSession(sessionId: string) {
     setTimeout(() => setIsCancelling(false), 2000);
   };
 
-  return { messages, activeRunId, isCancelling, connectionStatus, submitMessage, stop };
+  const forkMessage = async (messageId: string) => {
+    try {
+      const res = await fetchWithCsrf(`/api/fork/${messageId}`, {
+        method: "POST"
+      });
+      if (!res.ok) throw new Error("Failed to fork conversation");
+      const data = await res.json();
+      return data.newConversationId;
+    } catch (e) {
+      console.error("Fork failed", e);
+      throw e;
+    }
+  };
+
+  return { messages, activeRunId, isCancelling, connectionStatus, submitMessage, stop, forkMessage };
 }

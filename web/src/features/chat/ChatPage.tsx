@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { uploadFile } from "../../lib/api";
 import { Composer, type StagedFile } from "./Composer";
 import { MessageTimeline } from "./MessageTimeline";
@@ -6,7 +7,7 @@ import { useChatSession } from "./use-chat-session";
 import { useScrollToBottom } from "./useScrollToBottom";
 
 export function ChatPage({ sessionId }: { sessionId: string }) {
-  const { messages, submitMessage, activeRunId, isCancelling, connectionStatus, stop } = useChatSession(sessionId);
+  const { messages, submitMessage, activeRunId, isCancelling, connectionStatus, stop, forkMessage } = useChatSession(sessionId);
   const draftKey = `lali-draft-${sessionId}`;
   const [draft, setDraft] = useState(() => sessionStorage.getItem(draftKey) || "");
   useEffect(() => {
@@ -43,6 +44,17 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
     setTimeout(scrollToBottom, 50);
   };
 
-  return <div className="flex size-full min-h-0 flex-col"><MessageTimeline messages={messages} activeRunId={activeRunId} containerRef={containerRef} isAtBottom={isAtBottom} scrollToBottom={scrollToBottom} onSuggestion={setDraft} /><Composer draft={draft} setDraft={setDraft} stagedFiles={stagedFiles} fileInputRef={fileInputRef} onFiles={event => void handleFileChange(event)} onRemoveFile={file => setStagedFiles(current => current.filter(item => item.file !== file))} onSubmit={handleSubmit} onStop={() => void stop()} activeRunId={activeRunId} isCancelling={isCancelling} connectionStatus={connectionStatus} /></div>;
+  const navigate = useNavigate();
+
+  const handleFork = async (messageId: string) => {
+    try {
+      const newConvId = await forkMessage(messageId);
+      void navigate({ to: `/chat/${newConvId}` });
+    } catch (e) {
+      alert("Failed to fork conversation.");
+    }
+  };
+
+  return <div className="flex size-full min-h-0 flex-col"><MessageTimeline messages={messages} activeRunId={activeRunId} containerRef={containerRef} isAtBottom={isAtBottom} scrollToBottom={scrollToBottom} onSuggestion={setDraft} onFork={handleFork} /><Composer draft={draft} setDraft={setDraft} stagedFiles={stagedFiles} fileInputRef={fileInputRef} onFiles={event => void handleFileChange(event)} onRemoveFile={file => setStagedFiles(current => current.filter(item => item.file !== file))} onSubmit={handleSubmit} onStop={() => void stop()} activeRunId={activeRunId} isCancelling={isCancelling} connectionStatus={connectionStatus} /></div>;
 }
 
