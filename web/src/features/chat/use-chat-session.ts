@@ -38,19 +38,20 @@ export function useChatSession(sessionId: string) {
     setMessages([]);
     pendingMessagesRef.current.clear();
 
-    // Map pi-durable entries to our Message format
+    // Map pi-durable entries (which are Git-like commit nodes) to our UI Message format
     const processView = (view: any) => {
       const msgs: Message[] = [];
       let currentAssistantMsg: Message | null = null;
       let lastRequestId: string | null = null;
 
+      // view.entries contains the conversation thread path from root to leaf
       for (const entry of (view.entries || [])) {
         if (entry.kind === "pi.user") {
           let text = "";
           if (typeof entry.model[0]?.content === "string") text = entry.model[0].content;
           else if (Array.isArray(entry.model[0]?.content)) text = entry.model[0].content.map((c: any) => c.text).join("");
           
-          // Clean up pending messages that have been confirmed by the server
+          // Clean up pending optimistic UI messages that have been confirmed by the server
           for (const [key, pm] of pendingMessagesRef.current.entries()) {
             if (pm.content === text) {
               pendingMessagesRef.current.delete(key);
@@ -65,6 +66,7 @@ export function useChatSession(sessionId: string) {
           });
           currentAssistantMsg = null;
         } else if (entry.kind === "pi.assistant") {
+          // LLM outputs stream here. pi.assistant merges text and toolCall chunks
           const parts = entry.model[0]?.content;
           if (typeof parts === "string") {
             if (!currentAssistantMsg) {
@@ -97,6 +99,8 @@ export function useChatSession(sessionId: string) {
               if (Array.isArray(res.content)) text = res.content.find((c: any) => c.type === "text")?.text || "";
               else text = res.content;
               
+              // We use a convention where the pi-durable backend can return 
+              // a block response containing [APPROVAL REQUIRED] to trigger a UI interaction.
               if (text.startsWith("[APPROVAL REQUIRED]")) {
                 const proposalIdMatch = text.match(/Proposal ID: (.*?)\./);
                 if (proposalIdMatch) {
@@ -114,7 +118,8 @@ export function useChatSession(sessionId: string) {
         }
       }
 
-      // Check if the last assistant entry is complete (has a stopReason that isn't null)
+      // Check if the last assistant entry is complete (has a stopReason that isn't null).
+      // This indicates the Pi Durable run loop has yielded and is no longer busy.
       const lastEntry = view.entries?.[view.entries.length - 1];
       if (lastEntry?.kind === "pi.assistant" && lastEntry.model?.[0]?.stopReason) {
         if (currentAssistantMsg) currentAssistantMsg.isComplete = true;
@@ -131,6 +136,7 @@ export function useChatSession(sessionId: string) {
       setMessages(finalMsgs);
     };
 
+    // Connect to the Pi Durable SSE stream endpoint
     const es = new EventSource(`/api/stream?conversationId=${sessionId === "main" ? "" : sessionId}`);
     
     es.onopen = () => setConnectionStatus("connected");
