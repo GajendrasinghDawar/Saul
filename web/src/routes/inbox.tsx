@@ -7,7 +7,8 @@ export const Route = createFileRoute('/inbox')({
 })
 
 function InboxTab() {
-  const { approvals } = useAppContext();
+  const { view } = useAppContext();
+  const approvals: any[] = [];
 
   const handleDecision = async (id: string, approved: boolean) => {
     await fetch(approved ? `/approve/${id}` : `/reject/${id}`, { method: 'POST' });

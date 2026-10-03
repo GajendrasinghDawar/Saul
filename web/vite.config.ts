@@ -8,9 +8,9 @@ export default defineConfig({
   plugins: [TanStackRouterVite(), react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/approve': 'http://localhost:3000',
-      '/reject': 'http://localhost:3000'
+      '/api': 'http://127.0.0.1:3000',
+      '/approve': 'http://127.0.0.1:3000',
+      '/reject': 'http://127.0.0.1:3000'
     }
   }
 })

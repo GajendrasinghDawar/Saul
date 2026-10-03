@@ -3,12 +3,10 @@ import { AlertCircle, Activity, List, Inbox, MessageCircle } from 'lucide-react'
 import { useState, useEffect, createContext, useContext } from 'react'
 
 type AppData = {
-  approvals: any[];
-  runs: any[];
-  events: any[];
+  view: any;
 };
 
-const AppContext = createContext<AppData>({ approvals: [], runs: [], events: [] });
+const AppContext = createContext<AppData>({ view: null });
 
 export const useAppContext = () => useContext(AppContext);
 
@@ -17,25 +15,23 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
-  const [approvals, setApprovals] = useState<any[]>([]);
-  const [runs, setRuns] = useState<any[]>([]);
-  const [events, setEvents] = useState<any[]>([]);
+  const [view, setView] = useState<any>(null);
   
   useEffect(() => {
     const sse = new EventSource('/api/stream');
     sse.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        setApprovals(data.pending || []);
-        setRuns(data.allRuns || []);
-        setEvents(data.allEvents || []);
+        if (data.type === 'init' || data.type === 'update') {
+          setView(data.view);
+        }
       } catch (_) {}
     };
     return () => sse.close();
   }, []);
 
   return (
-    <AppContext.Provider value={{ approvals, runs, events }}>
+    <AppContext.Provider value={{ view }}>
       <div className="min-h-screen bg-gray-50 flex items-start">
         {/* Sticky Sidebar */}
         <div className="w-64 bg-white border-r border-gray-200 p-4 hidden md:block sticky top-0 h-screen overflow-y-auto shrink-0">

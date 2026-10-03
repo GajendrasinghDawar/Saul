@@ -6,7 +6,8 @@ export const Route = createFileRoute('/activity')({
 })
 
 function ActivityTab() {
-  const { runs } = useAppContext();
+  const { view } = useAppContext();
+  const runs: any[] = []; // Disabled during pi-durable migration
 
   return (
     <div className="bg-white shadow rounded-lg border border-gray-200">

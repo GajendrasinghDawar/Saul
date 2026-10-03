@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as EventsRouteImport } from './routes/events'
 import { Route as InboxRouteImport } from './routes/inbox'
+import { Route as ChatThreadThreadIdRouteImport } from './routes/chat.thread.$threadId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,18 +35,25 @@ const InboxRoute = InboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChatThreadThreadIdRoute = ChatThreadThreadIdRouteImport.update({
+  id: '/chat/thread/$threadId',
+  path: '/chat/thread/$threadId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/events': typeof EventsRoute
   '/inbox': typeof InboxRoute
+  '/chat/thread/$threadId': typeof ChatThreadThreadIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/events': typeof EventsRoute
   '/inbox': typeof InboxRoute
+  '/chat/thread/$threadId': typeof ChatThreadThreadIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,20 @@ export interface FileRoutesById {
   '/activity': typeof ActivityRoute
   '/events': typeof EventsRoute
   '/inbox': typeof InboxRoute
+  '/chat/thread/$threadId': typeof ChatThreadThreadIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/activity' | '/events' | '/inbox'
+  fullPaths: '/' | '/activity' | '/events' | '/inbox' | '/chat/thread/$threadId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/activity' | '/events' | '/inbox'
-  id: '__root__' | '/' | '/activity' | '/events' | '/inbox'
+  to: '/' | '/activity' | '/events' | '/inbox' | '/chat/thread/$threadId'
+  id:
+    | '__root__'
+    | '/'
+    | '/activity'
+    | '/events'
+    | '/inbox'
+    | '/chat/thread/$threadId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +82,7 @@ export interface RootRouteChildren {
   ActivityRoute: typeof ActivityRoute
   EventsRoute: typeof EventsRoute
   InboxRoute: typeof InboxRoute
+  ChatThreadThreadIdRoute: typeof ChatThreadThreadIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +115,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/chat/thread/$threadId': {
+      id: '/chat/thread/$threadId'
+      path: '/chat/thread/$threadId'
+      fullPath: '/chat/thread/$threadId'
+      preLoaderRoute: typeof ChatThreadThreadIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +130,7 @@ const rootRouteChildren: RootRouteChildren = {
   ActivityRoute: ActivityRoute,
   EventsRoute: EventsRoute,
   InboxRoute: InboxRoute,
+  ChatThreadThreadIdRoute: ChatThreadThreadIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

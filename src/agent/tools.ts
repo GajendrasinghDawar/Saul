@@ -1,42 +1,68 @@
-import { saveTodo, clearTodos, recordToolAction } from "./data.ts";
+import { Type } from "@earendil-works/pi-ai";
+import { defineTool, defineExtension, section } from "@earendil-works/pi-durable";
+import { saveTodo, clearTodos } from "./data.ts";
+import { db } from "../db/index.ts";
+import { todos } from "../db/schema.ts";
 
-// Define what a Tool function looks like
-export type ToolExecutor = (runId: string, detail: string) => Promise<void>;
-
-// The Tool Registry: Add new tools here without touching the main execution logic!
-export const toolRegistry: Record<string, ToolExecutor> = {
-  
-  save_todo: async (runId, detail) => {
-    await saveTodo(detail || "Unknown task");
-    await recordToolAction(runId, 'save_todo', `Saved TODO: ${detail}`);
+export const saveTodoTool = defineTool({
+  name: "save_todo",
+  description: "Save a new task or reminder for the user.",
+  parameters: Type.Object({ task: Type.String() }),
+  replay: "safe", // It's safe to rerun this tool after a crash
+  execute: async (args, api) => {
+    await saveTodo(args.task);
+    api.output(`Saved TODO: ${args.task}\n`);
+    return { content: [{ type: "text", text: `Success: Saved "${args.task}"` }] };
   },
+});
 
-  reply_to_user: async (runId, detail) => {
-    await recordToolAction(runId, 'reply_to_user', `Replied: ${detail}`);
-  },
-
-  read_todos: async (runId) => {
-    await recordToolAction(runId, 'read_todos', 'Loaded world state');
-  },
-
-  clear_todos: async (runId) => {
+export const clearTodosTool = defineTool({
+  name: "clear_todos",
+  description: "Clear all pending todos from the database.",
+  parameters: Type.Object({}),
+  replay: "safe",
+  execute: async (args, api) => {
     await clearTodos();
-    await recordToolAction(runId, 'clear_todos', 'Cleared pending todos');
+    api.output(`Cleared all pending todos\n`);
+    return { content: [{ type: "text", text: "Success: Cleared all todos." }] };
   },
+});
 
-  send_digest_email: async (runId, detail) => {
+export const sendDigestEmailTool = defineTool({
+  name: "send_digest_email",
+  description: "Send an email summary of the user's pending tasks.",
+  parameters: Type.Object({ body: Type.String() }),
+  // replay: "none", meaning it will NOT rerun if it crashes mid-flight. Safe from double-sending!
+  execute: async (args, api) => {
+    api.output(`Sending email...\n`);
     const { Resend } = await import('resend');
     const resend = new Resend(process.env.RESEND_API_KEY);
     
+    // We use the api.taskId as our Idempotency Key!
     const { data, error } = await resend.emails.send({
       from: 'Lali <onboarding@resend.dev>',
       to: process.env.MY_EMAIL_ADDRESS || 'delivered@resend.dev', 
       subject: 'Your Lali Morning Digest',
-      html: `<p>${detail?.replace(/\n/g, '<br>')}</p>`,
+      html: `<p>${args.body.replace(/\n/g, '<br>')}</p>`,
+      headers: { 'Idempotency-Key': String(api.taskId) }
     });
 
     if (error) throw new Error(error.message);
-    await recordToolAction(runId, 'send_digest_email', `Sent email ID: ${data?.id}`);
+    api.output(`Sent email ID: ${data?.id}\n`);
+    return { content: [{ type: "text", text: `Email sent successfully! ID: ${data?.id}` }] };
   }
+});
 
-};
+// We bundle the tools and the prompt into an Extension
+export const LaliExtension = defineExtension({
+  name: "lali",
+  sections: [
+    section("preamble", () => "You are Lali, an autonomous personal assistant. You can manage the user's todo list and send emails.", { tag: false }),
+    section("world_state", async () => {
+      // Inject the live database state into the system prompt!
+      const currentTodos = await db.select().from(todos);
+      return `Current Todos:\n${JSON.stringify(currentTodos, null, 2)}`;
+    })
+  ],
+  tools: [saveTodoTool, clearTodosTool, sendDigestEmailTool]
+});

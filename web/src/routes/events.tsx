@@ -6,7 +6,8 @@ export const Route = createFileRoute('/events')({
 })
 
 function EventsTab() {
-  const { events } = useAppContext();
+  const { view } = useAppContext();
+  const events: any[] = []; // Disabled during pi-durable migration
 
   return (
     <div className="bg-white shadow rounded-lg border border-gray-200">
