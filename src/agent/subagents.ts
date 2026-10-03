@@ -85,6 +85,70 @@ function textOf(message: AssistantMessage | undefined): string {
   return (message?.content ?? []).flatMap((c) => (c.type === "text" ? [c.text] : [])).join("");
 }
 
+export const SubagentManager = {
+  async getStatus(api: any, callContext: any, name?: string) {
+    const registry = (await api.snapshot(Subagents, api.conversationId, callContext)) ?? { agents: {}, reporters: {} };
+    const names = name === undefined ? Object.keys(registry.agents) : [name];
+    const statuses = [];
+    for (const each of names) {
+      const found = Object.hasOwn(registry.agents, each) ? registry.agents[each] : undefined;
+      if (found === undefined) continue;
+      const busy = (await api.snapshot(LiveDoc, found.conversationId, callContext))?.run !== undefined;
+      statuses.push({ name: each, state: busy ? "working" : "idle" });
+    }
+    return statuses;
+  },
+
+  async stop(api: any, callContext: any, name: string) {
+    const registry = (await api.snapshot(Subagents, api.conversationId, callContext)) ?? { agents: {} };
+    const agent = registry.agents[name];
+    if (!agent) return { error: `No subagent named ${name}.` };
+
+    await (await api.conversation(agent.conversationId, callContext))!.abort(callContext);
+    return { success: true, conversationId: agent.conversationId };
+  },
+
+  async spawn(api: any, callContext: any, name: string, message: string) {
+    const registry = (await api.snapshot(Subagents, api.conversationId, callContext)) ?? { agents: {} };
+    if (Object.hasOwn(registry.agents, name)) return { error: `${name} already exists; use send.` };
+
+    await api.commit(async (tx: any) => {
+      const state = await tx.doc(Subagents, api.conversationId);
+      const background = { ownership: { kind: "conversation" as const }, background: true } as const;
+      
+      const anchor = await tx.createTask(Anchor, null, background);
+      const child = await tx.createConversation({ ownership: { kind: "task" as const, taskId: anchor } });
+      await configure(tx, child.id, {
+        extensions: { remove: [SubagentExtension] },
+        instructions: `You are the subagent "${name}". Answer the main agent's requests.`,
+      });
+      state.agents[name] = { conversationId: child.id, reported: [] };
+      
+      const input = { name, conversationId: child.id, message, followUp: false };
+      state.reporters[api.taskId as unknown as string] = await tx.createTask(Reporter, input, background);
+    }, callContext);
+
+    const current = (await api.snapshot(Subagents, api.conversationId, callContext))?.agents[name];
+    return { success: true, conversationId: current?.conversationId };
+  },
+
+  async send(api: any, callContext: any, name: string, message: string, followUp?: boolean) {
+    const registry = (await api.snapshot(Subagents, api.conversationId, callContext)) ?? { agents: {} };
+    const agent = registry.agents[name];
+    if (!agent) return { error: `No subagent named ${name}.` };
+
+    await api.commit(async (tx: any) => {
+      const state = await tx.doc(Subagents, api.conversationId);
+      const background = { ownership: { kind: "conversation" as const }, background: true } as const;
+      const conversationId = state.agents[name]!.conversationId;
+      const input = { name, conversationId, message, followUp: followUp === true };
+      state.reporters[api.taskId as unknown as string] = await tx.createTask(Reporter, input, background);
+    }, callContext);
+
+    return { success: true, conversationId: agent.conversationId };
+  }
+};
+
 export const subagentTool = defineTool({
   name: "manage_subagents",
   description:
@@ -104,52 +168,36 @@ export const subagentTool = defineTool({
       content: [{ type: "text" as const, text }],
       ...(conversationId === undefined || name === undefined ? {} : { details: { name, conversationId } }),
     });
-    const registry = (await api.snapshot(Subagents, api.conversationId, callContext)) ?? {
-      agents: {},
-      reporters: {},
-    };
 
     if (action === "status") {
-      const names = name === undefined ? Object.keys(registry.agents) : [name];
-      const lines: string[] = [];
-      for (const each of names) {
-        const found = Object.hasOwn(registry.agents, each) ? registry.agents[each] : undefined;
-        if (found === undefined) continue;
-        const busy = (await api.snapshot(LiveDoc, found.conversationId, callContext))?.run !== undefined;
-        lines.push(`${each}: ${busy ? "working" : "idle"}`);
-      }
-      return reply(lines.length === 0 ? "No subagents." : lines.join("\n"));
+      const statuses = await SubagentManager.getStatus(api, callContext, name);
+      if (statuses.length === 0) return reply("No subagents.");
+      return reply(statuses.map(s => `${s.name}: ${s.state}`).join("\n"));
     }
+
     if (name === undefined) return reply(`${action} needs a name.`);
-    const agent = Object.hasOwn(registry.agents, name) ? registry.agents[name] : undefined;
-    if (action !== "spawn" && agent === undefined) return reply(`No subagent named ${name}.`);
 
     if (action === "stop") {
-      await (await api.conversation(agent!.conversationId, callContext))!.abort(callContext);
-      return reply(`Stopped ${name}.`, agent!.conversationId);
+      const res = await SubagentManager.stop(api, callContext, name);
+      if (res.error) return reply(res.error);
+      return reply(`Stopped ${name}.`, res.conversationId);
     }
+
     if (message === undefined) return reply(`${action} needs a message.`);
 
-    const result = await api.commit(async (tx) => {
-      const state = await tx.doc(Subagents, api.conversationId);
-      const background = { ownership: { kind: "conversation" }, background: true } as const;
-      if (action === "spawn") {
-        if (Object.hasOwn(state.agents, name)) return `${name} already exists; use send.`;
-        const anchor = await tx.createTask(Anchor, null, background);
-        const child = await tx.createConversation({ ownership: { kind: "task", taskId: anchor } });
-        await configure(tx, child.id, {
-          extensions: { remove: [SubagentExtension] },
-          instructions: `You are the subagent "${name}". Answer the main agent's requests.`,
-        });
-        state.agents[name] = { conversationId: child.id, reported: [] };
-      }
-      const conversationId = state.agents[name]!.conversationId;
-      const input = { name, conversationId, message, followUp: action === "send" && followUp === true };
-      state.reporters[api.taskId as unknown as string] = await tx.createTask(Reporter, input, background);
-      return action === "send" ? `Sent to ${name}.` : `Started ${name}.`;
-    }, callContext);
-    const current = (await api.snapshot(Subagents, api.conversationId, callContext))?.agents[name];
-    return reply(result, current?.conversationId);
+    if (action === "spawn") {
+      const res = await SubagentManager.spawn(api, callContext, name, message);
+      if (res.error) return reply(res.error);
+      return reply(`Started ${name}.`, res.conversationId);
+    }
+
+    if (action === "send") {
+      const res = await SubagentManager.send(api, callContext, name, message, followUp);
+      if (res.error) return reply(res.error);
+      return reply(`Sent to ${name}.`, res.conversationId);
+    }
+    
+    return reply(`Unknown action: ${action}`);
   },
 });
 

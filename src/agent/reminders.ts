@@ -4,6 +4,40 @@ import { Type } from "@earendil-works/pi-ai";
 type ReminderInput = { message: string; at: number };
 type ReminderState = { phase: "wait" } | { phase: "remind" };
 
+export interface NotificationGateway {
+  sendReminder(id: string, message: string): Promise<void>;
+}
+
+export const ResendNotificationGateway: NotificationGateway = {
+  async sendReminder(id: string, message: string) {
+    try {
+      const { Resend } = await import('resend');
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const { data, error } = await resend.emails.send({
+        from: 'Lali <onboarding@resend.dev>',
+        to: process.env.MY_EMAIL_ADDRESS || 'delivered@resend.dev', 
+        subject: '⏰ Lali Reminder',
+        html: `<p>You asked me to remind you:</p><h3>${message}</h3>`,
+        headers: { 'Idempotency-Key': id }
+      });
+      
+      if (error) {
+        console.error("Resend API Error:", error);
+      } else {
+        console.log(`Sent reminder email for task ${id}`, data);
+      }
+    } catch (error) {
+      console.error("Failed to send reminder email (Exception):", error);
+    }
+  }
+};
+
+export let NotificationService: NotificationGateway = ResendNotificationGateway;
+
+export function setNotificationService(service: NotificationGateway) {
+  NotificationService = service;
+}
+
 export const ReminderTask = defineTask<ReminderInput, ReminderState, null>({
   name: "lali.reminder",
   version: 1,
@@ -30,25 +64,7 @@ export const ReminderTask = defineTask<ReminderInput, ReminderState, null>({
       );
 
       // Send the email reminder
-      try {
-        const { Resend } = await import('resend');
-        const resend = new Resend(process.env.RESEND_API_KEY);
-        const { data, error } = await resend.emails.send({
-          from: 'Lali <onboarding@resend.dev>',
-          to: process.env.MY_EMAIL_ADDRESS || 'delivered@resend.dev', 
-          subject: '⏰ Lali Reminder',
-          html: `<p>You asked me to remind you:</p><h3>${task.input.message}</h3>`,
-          headers: { 'Idempotency-Key': String(task.id) }
-        });
-        
-        if (error) {
-          console.error("Resend API Error:", error);
-        } else {
-          console.log(`Sent reminder email for task ${task.id}`, data);
-        }
-      } catch (error) {
-        console.error("Failed to send reminder email (Exception):", error);
-      }
+      await NotificationService.sendReminder(String(task.id), task.input.message);
 
       // Finish the task
       await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), taskContext);
