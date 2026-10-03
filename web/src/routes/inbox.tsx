@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Clock } from 'lucide-react'
+import { Clock, CheckCircle } from 'lucide-react'
 import { useAppContext } from './__root'
 
 export const Route = createFileRoute('/inbox')({
@@ -8,11 +8,10 @@ export const Route = createFileRoute('/inbox')({
 
 function InboxTab() {
   const { view } = useAppContext();
-  const approvals: any[] = [];
-
-  const handleDecision = async (id: string, approved: boolean) => {
-    await fetch(approved ? `/approve/${id}` : `/reject/${id}`, { method: 'POST' });
-  };
+  
+  // pi-durable inbox
+  const inboxDoc = view?.docs ? Object.values(view.docs).find((d: any) => d.kind === 'pi.inbox') as any : null;
+  const approvals = inboxDoc?.items || [];
 
   return (
     <div className="bg-white shadow rounded-lg border border-gray-200">
@@ -25,17 +24,18 @@ function InboxTab() {
         </span>
       </div>
       <ul className="divide-y divide-gray-200">
-        {approvals.length === 0 ? <li className="p-6 text-center text-gray-500">Inbox Zero! 🎉</li> : 
-         approvals.map(app => (
+        {approvals.length === 0 ? <li className="p-12 text-center text-gray-500 flex flex-col items-center gap-3">
+            <CheckCircle className="w-10 h-10 text-green-400" />
+            <p>Inbox Zero! 🎉 No pending tool approvals.</p>
+          </li> : 
+         approvals.map((app: any) => (
           <li key={app.id} className="p-6 hover:bg-gray-50">
             <div className="flex justify-between items-start">
               <div>
-                <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase">Action: {app.action}</span>
-                <p className="mt-3 text-sm text-gray-700 font-mono bg-white border border-gray-200 p-4 rounded whitespace-pre-wrap">{app.detail}</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => handleDecision(app.id, false)} className="px-4 py-2 bg-red-100 text-red-700 rounded-md text-sm font-medium hover:bg-red-200">Reject</button>
-                <button onClick={() => handleDecision(app.id, true)} className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium shadow-sm hover:bg-indigo-700">Approve</button>
+                <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded uppercase">Action: {app.type}</span>
+                <pre className="mt-3 text-sm text-gray-700 bg-white border border-gray-200 p-4 rounded whitespace-pre-wrap">
+                  {JSON.stringify(app, null, 2)}
+                </pre>
               </div>
             </div>
           </li>

@@ -57,7 +57,7 @@ let harness: Harness;
 
 async function startServer() {
   const storage = await openNodeSqliteStorage("./lali-durable.sqlite");
-  harness = await Harness.open(storage, { models, registry }, BACKGROUND_CONTEXT);
+  harness = await Harness.open(storage, { models: models as any, registry }, BACKGROUND_CONTEXT);
   console.log("🚀 Pi Durable Harness Booted");
 
   app.listen(port, () => {
@@ -100,6 +100,14 @@ app.get("/api/conversations", async (req, res) => {
     return tx.scanConversations({}, 100, undefined);
   }, BACKGROUND_CONTEXT);
   res.json({ conversations: result.items });
+});
+
+// 1.5.5. List Tasks Endpoint
+app.get("/api/tasks", async (req, res) => {
+  const result = await harness.commit(async (tx) => {
+    return tx.scanTasks({}, 100, undefined);
+  }, BACKGROUND_CONTEXT);
+  res.json({ tasks: result.items });
 });
 
 // 1.6. Create New Thread Endpoint

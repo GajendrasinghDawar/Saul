@@ -1,4 +1,4 @@
-import { createRootRoute, Outlet, Link } from '@tanstack/react-router'
+import { createRootRoute, Outlet, Link, useRouterState } from '@tanstack/react-router'
 import { AlertCircle, Activity, List, Inbox, MessageCircle } from 'lucide-react'
 import { useState, useEffect, createContext, useContext } from 'react'
 
@@ -16,9 +16,12 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const [view, setView] = useState<any>(null);
+  const routerState = useRouterState();
+  const threadMatch = routerState.location.pathname.match(/\/chat\/thread\/(\d+)/);
+  const activeThreadId = threadMatch ? threadMatch[1] : '1';
   
   useEffect(() => {
-    const sse = new EventSource('/api/stream');
+    const sse = new EventSource(`/api/stream?conversationId=${activeThreadId}`);
     sse.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
@@ -28,7 +31,7 @@ function RootComponent() {
       } catch (_) {}
     };
     return () => sse.close();
-  }, []);
+  }, [activeThreadId]);
 
   return (
     <AppContext.Provider value={{ view }}>

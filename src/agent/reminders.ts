@@ -80,8 +80,40 @@ export const scheduleReminderTool = defineTool({
   }
 });
 
+export const manageRemindersTool = defineTool({
+  name: "manage_reminders",
+  description: "List active scheduled reminders.",
+  parameters: Type.Object({
+    action: Type.Literal("list")
+  }),
+  replay: "unsafe",
+  execute: async (args, api, callContext) => {
+    if (args.action === "list") {
+      const result = await api.commit(async (tx) => {
+        return tx.scanTasks({}, 100, undefined);
+      }, callContext);
+      
+      const reminders = result.items.filter(t => t.kind === "lali.reminder" && t.state.status === "running");
+      
+      if (reminders.length === 0) return { content: [{ type: "text", text: "No active reminders." }] };
+      
+      return { 
+        content: [{ 
+          type: "text", 
+          text: `Active reminders:\n${reminders.map(r => {
+            const state = r.state as any;
+            return `- Task ID: ${r.id} (Phase: ${state.checkpoint?.phase || 'wait'})`;
+          }).join('\n')}` 
+        }] 
+      };
+    }
+    
+    throw new Error("Invalid action.");
+  }
+});
+
 export const ReminderExtension = defineExtension({
   name: "reminder-tools",
   tasks: [ReminderTask],
-  tools: [scheduleReminderTool]
+  tools: [scheduleReminderTool, manageRemindersTool]
 });

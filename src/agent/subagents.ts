@@ -156,5 +156,5 @@ export const subagentTool = defineTool({
 export const SubagentExtension = defineExtension({
   name: "subagent-tools",
   tasks: [Anchor, Reporter],
-  tools: [subagentTool],
+  tools: [subagentTool]
 });
