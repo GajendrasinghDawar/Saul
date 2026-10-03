@@ -1,7 +1,25 @@
 import { db } from "../db/index.ts";
 import * as schema from "../db/schema.ts";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import crypto from "crypto";
+
+export async function getUserIdForConversation(conversationId: string) {
+  const records = await db.select().from(schema.userConversations).where(eq(schema.userConversations.conversationId, conversationId));
+  if (records.length === 0) throw new Error("Conversation has no owner!");
+  return records[0].userId;
+}
+
+export async function isConversationOwner(conversationId: string, userId: string) {
+  const records = await db.select().from(schema.userConversations).where(
+    sql`${schema.userConversations.conversationId} = ${conversationId} AND ${schema.userConversations.userId} = ${userId}`
+  );
+  return records.length > 0;
+}
+
+export async function getUserConversationIds(userId: string): Promise<string[]> {
+  const records = await db.select().from(schema.userConversations).where(eq(schema.userConversations.userId, userId));
+  return records.map(r => r.conversationId);
+}
 
 export async function setRun(runId: string, status: string) {
   // Check if run exists first
@@ -23,7 +41,7 @@ export async function logAgentActivity(runId: string, type: string, message: str
 }
 
 // In the course, agentState gathers the full context (world state + recent events)
-export async function agentState(runId: string, incomingMessage?: string) {
+export async function agentState(userId: string, runId: string, incomingMessage?: string) {
   // Gather recent events to give the LLM context of what it just did
   const recentEvents = await db
     .select()
@@ -36,7 +54,7 @@ export async function agentState(runId: string, incomingMessage?: string) {
   const pendingTodos = await db
     .select()
     .from(schema.todos)
-    .where(eq(schema.todos.status, 'pending'));
+    .where(sql`${schema.todos.status} = 'pending' AND ${schema.todos.userId} = ${userId}`);
 
   return {
     incomingMessage,
@@ -55,10 +73,11 @@ export async function recordToolAction(runId: string, tool: string, detail: stri
   await logAgentActivity(runId, 'tool', `Tool Executed: ${tool} -> ${detail}`);
 }
 
-export async function proposeAction(runId: string, action: string, detail: string) {
+export async function proposeAction(userId: string, runId: string, action: string, detail: string) {
   const proposalId = crypto.randomUUID();
   await db.insert(schema.approvals).values({
     id: proposalId,
+    userId,
     action,
     detail,
     status: 'pending'
@@ -69,14 +88,15 @@ export async function proposeAction(runId: string, action: string, detail: strin
 }
 
 // Helper for tools to modify the world state directly
-export async function saveTodo(title: string) {
+export async function saveTodo(id: string, userId: string, title: string) {
   await db.insert(schema.todos).values({
-    id: crypto.randomUUID(),
+    id,
+    userId,
     title,
     status: 'pending'
-  });
+  }).onConflictDoNothing();
 }
 
-export async function clearTodos() {
-  await db.update(schema.todos).set({ status: 'completed' }).where(eq(schema.todos.status, 'pending'));
+export async function clearTodos(userId: string) {
+  await db.update(schema.todos).set({ status: 'completed' }).where(sql`${schema.todos.status} = 'pending' AND ${schema.todos.userId} = ${userId}`);
 }
