@@ -34,10 +34,10 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (activeRunId || stagedFiles.some(file => file.uploading || file.error)) return;
+    if (stagedFiles.some(file => file.uploading || file.error)) return;
     const attachmentIds = stagedFiles.flatMap(file => file.id ? [file.id] : []);
     if (!draft.trim() && attachmentIds.length === 0) return;
-    void submitMessage(draft.trim(), attachmentIds);
+    void submitMessage(draft.trim(), attachmentIds, activeRunId ? "steer" : undefined);
     setDraft("");
     setStagedFiles([]);
     setTimeout(scrollToBottom, 50);

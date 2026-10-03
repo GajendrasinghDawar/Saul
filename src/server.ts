@@ -143,7 +143,7 @@ startServer();
 
 // Chat: Submit message to a conversation
 app.post("/api/chat", doubleCsrfProtection, apiLimiter, async (req, res) => {
-  const { message, conversationId } = req.body;
+  const { message, conversationId, whenBusy } = req.body;
   
   const conv = conversationId 
     ? await harness.conversation(Number(conversationId) as unknown as import("@earendil-works/pi-durable").ConversationId, BACKGROUND_CONTEXT)
@@ -156,7 +156,7 @@ app.post("/api/chat", doubleCsrfProtection, apiLimiter, async (req, res) => {
   
   if (!conv) return res.status(404).send("Not found");
   
-  const submission = await conv.submit({ type: "input", content: message }, BACKGROUND_CONTEXT);
+  const submission = await conv.submit({ type: "input", content: message, whenBusy }, BACKGROUND_CONTEXT);
   const settled = await submission.wait(BACKGROUND_CONTEXT);
   
   res.json({ success: true, result: settled });

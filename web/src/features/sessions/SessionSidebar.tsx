@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bell, Inbox, MessageSquare, Settings, Plus } from "lucide-react";
+import { Activity, Bell, Inbox, MessageSquare, Settings, Plus } from "lucide-react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Button } from "../../components/ui/Button";
 import {
@@ -22,6 +22,7 @@ import { UserMenu } from "../auth/UserMenu";
 import { fetchSessions, createSession, type SessionItem } from "./session-api";
 
 const primaryNavigation = [
+  { to: "/tasks", label: "Tasks", icon: Activity },
   { to: "/mail", label: "Mail", icon: Inbox },
   { to: "/notifications", label: "Notifications", icon: Bell },
   { to: "/settings", label: "Settings", icon: Settings },

@@ -128,8 +128,8 @@ export function useChatSession(sessionId: string) {
     };
   }, [sessionId]);
 
-  const submitMessage = async (text: string, attachmentIds: string[] = []) => {
-    if (activeRunId || (!text.trim() && attachmentIds.length === 0)) return;
+  const submitMessage = async (text: string, attachmentIds: string[] = [], whenBusy?: "queue" | "steer" | "reject") => {
+    if ((activeRunId && whenBusy !== "steer") || (!text.trim() && attachmentIds.length === 0)) return;
 
     const idempotencyKey = crypto.randomUUID();
     const pendingMsg: Message = {
@@ -150,7 +150,8 @@ export function useChatSession(sessionId: string) {
         body: JSON.stringify({ 
           conversationId: sessionId === "main" ? undefined : sessionId, 
           message: text,
-          attachmentIds
+          attachmentIds,
+          whenBusy
         })
       });
       
