@@ -10,25 +10,20 @@ export interface NotificationGateway {
 
 export const ResendNotificationGateway: NotificationGateway = {
   async sendReminder(id: string, message: string) {
-    try {
-      const { Resend } = await import('resend');
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      const { data, error } = await resend.emails.send({
-        from: 'Lali <onboarding@resend.dev>',
-        to: process.env.MY_EMAIL_ADDRESS || 'delivered@resend.dev', 
-        subject: '⏰ Lali Reminder',
-        html: `<p>You asked me to remind you:</p><h3>${message}</h3>`,
-        headers: { 'Idempotency-Key': id }
-      });
-      
-      if (error) {
-        console.error("Resend API Error:", error);
-      } else {
-        console.log(`Sent reminder email for task ${id}`, data);
-      }
-    } catch (error) {
-      console.error("Failed to send reminder email (Exception):", error);
+    const { Resend } = await import('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const { data, error } = await resend.emails.send({
+      from: 'Lali <onboarding@resend.dev>',
+      to: process.env.MY_EMAIL_ADDRESS || 'delivered@resend.dev', 
+      subject: '⏰ Lali Reminder',
+      text: `You asked me to remind you:\n\n${message}`,
+      headers: { 'Idempotency-Key': id }
+    });
+    
+    if (error) {
+      throw new Error(`Resend API Error: ${error.message}`);
     }
+    console.log(`Sent reminder email for task ${id}`, data);
   }
 };
 
@@ -58,7 +53,8 @@ export const ReminderTask = defineTask<ReminderInput, ReminderState, null>({
         { 
           type: "input", 
           content: `[System Reminder] You scheduled a reminder: ${task.input.message}`, 
-          whenBusy: "followUp" 
+          whenBusy: "followUp",
+          requestId: `reminder-${task.id}`
         }, 
         taskContext
       );

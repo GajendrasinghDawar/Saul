@@ -46,7 +46,7 @@ export const sendDigestEmailTool = defineTool({
       from: 'Lali <onboarding@resend.dev>',
       to: process.env.MY_EMAIL_ADDRESS || 'delivered@resend.dev', 
       subject: 'Your Lali Morning Digest',
-      html: `<p>${args.body.replace(/\n/g, '<br>')}</p>`,
+      text: args.body,
       headers: { 'Idempotency-Key': String(api.taskId) }
     });
 

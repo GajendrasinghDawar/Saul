@@ -43,7 +43,12 @@ export function createApp(dependencies: AppDependencies) {
   // CSRF protection
   // @ts-ignore
   const { doubleCsrfProtection, generateCsrfToken } = doubleCsrf({
-    getSecret: () => process.env.CSRF_SECRET || "csrf-secret",
+    getSecret: () => {
+      if (process.env.NODE_ENV === "production" && !process.env.CSRF_SECRET) {
+        throw new Error("CSRF_SECRET must be set in production");
+      }
+      return process.env.CSRF_SECRET || "csrf-secret-dev-only";
+    },
     getSessionIdentifier: (req: express.Request) => {
       return (req as any).cookies?.["better-auth.session_token"] || "unknown";
     },

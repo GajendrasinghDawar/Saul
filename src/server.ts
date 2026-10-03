@@ -14,9 +14,11 @@ dotenv.config({ override: true });
 // Prevent random uncaught network errors from crashing the server
 process.on('uncaughtException', (err) => {
   console.error("Uncaught Exception:", err);
+  process.exit(1);
 });
 process.on('unhandledRejection', (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  process.exit(1);
 });
 
 // ---------------------------------------------------------
@@ -77,7 +79,7 @@ async function startServer() {
   });
 }
 
-startServer();
-
-// Keep the event loop alive
-setInterval(() => {}, 60 * 1000);
+startServer().catch(err => {
+  console.error("Failed to start server", err);
+  process.exit(1);
+});
