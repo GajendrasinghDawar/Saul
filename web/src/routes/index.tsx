@@ -1,10 +1,9 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 
-export const Route = createFileRoute('/')({
-  beforeLoad: () => {
-    throw redirect({
-      to: '/chat/thread/$threadId',
-      params: { threadId: '1' }
-    })
-  }
-})
+export const Route = createFileRoute("/")({
+  component: IndexComponent,
+});
+
+function IndexComponent() {
+  return <Navigate to="/chat/$sessionId" params={{ sessionId: "main" }} />;
+}
