@@ -1,5 +1,4 @@
-import { useEffect, useReducer, useRef } from "react";
-import type { TimelineEvent } from "../../../../shared/timeline";
+import { useEffect, useState, useRef } from "react";
 import { fetchWithCsrf } from "../../lib/api";
 
 export type Message = {
@@ -25,249 +24,103 @@ export type Effect = {
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
 
-type ChatState = {
-  messages: Message[];
-  activeRunId: string | null;
-  isCancelling: boolean;
-  seenSequences: Set<number>;
-  connectionStatus: ConnectionStatus;
-};
+export function useChatSession(sessionId: string) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
 
-type ChatAction = 
-  | { type: "eventReceived"; event: TimelineEvent }
-  | { type: "submissionStarted"; idempotencyKey: string; text: string }
-  | { type: "submissionAccepted"; idempotencyKey: string; requestId: string }
-  | { type: "connectionChanged"; status: ConnectionStatus }
-  | { type: "cancelStarted" }
-  | { type: "reset"; payload?: ChatState };
+  // Keep a ref to pending messages so we can overlay them on the server state
+  const pendingMessagesRef = useRef<Map<string, Message>>(new Map());
 
-function applyEvent(state: ChatState, event: TimelineEvent): ChatState {
-      
-      // We rely on the fact that if a user_message arrives, we might already have it bound from submissionAccepted
-      if (event.type === "user_message") {
-        const exists = state.messages.some(m => m.requestId === event.requestId);
-        if (!exists) {
-          return {
-            ...state,
-            messages: [...state.messages, {
-              role: "user",
-              content: event.data.message,
-              requestId: event.requestId,
-              status: "delivered"
-            }]
-          };
-        }
-        return state;
-      }
+  useEffect(() => {
+    setConnectionStatus("connecting");
+    setMessages([]);
+    pendingMessagesRef.current.clear();
 
-      
-      if (event.type === "run_started") {
-        const id = event.requestId;
-        const msgs = [...state.messages];
-        let existingIdx = msgs.findIndex(m => m.requestId === id && m.role === "assistant");
-        
-        if (existingIdx === -1) {
+    // Map pi-durable entries to our Message format
+    const processView = (view: any) => {
+      const msgs: Message[] = [];
+      let currentAssistantMsg: Message | null = null;
+      let lastRequestId: string | null = null;
+
+      for (const entry of (view.entries || [])) {
+        if (entry.kind === "pi.user") {
+          let text = "";
+          if (typeof entry.model[0]?.content === "string") text = entry.model[0].content;
+          else if (Array.isArray(entry.model[0]?.content)) text = entry.model[0].content.map((c: any) => c.text).join("");
+          
           msgs.push({
-            role: "assistant",
-            content: "",
-            requestId: id,
-            activities: [],
-            effects: []
+            role: "user",
+            content: text,
+            requestId: String(entry.id),
+            status: "delivered"
           });
-        }
-        return { ...state, messages: msgs, activeRunId: id, isCancelling: false };
-      }
-
-      if (event.type === "text") {
-        const id = event.requestId;
-        const msgs = [...state.messages];
-        const existingIdx = msgs.findIndex(m => m.requestId === id && m.role === "assistant");
-        
-        if (existingIdx >= 0) {
-          msgs[existingIdx] = {
-            ...msgs[existingIdx],
-            content: msgs[existingIdx].content + event.data.text
-          };
-        } else {
-          msgs.push({
-            role: "assistant",
-            content: event.data.text,
-            requestId: id,
-            activities: []
-          });
-        }
-        return { ...state, messages: msgs };
-      }
-
-      if (event.type === "lifecycle") {
-        const id = event.requestId;
-        const msgs = [...state.messages];
-        let existingIdx = msgs.findIndex(m => m.requestId === id && m.role === "assistant");
-        
-        if (existingIdx === -1) {
-          existingIdx = msgs.length;
-          msgs.push({
-            role: "assistant",
-            content: "",
-            requestId: id,
-            activities: []
-          });
-        }
-        
-        msgs[existingIdx] = {
-          ...msgs[existingIdx],
-          activities: [...(msgs[existingIdx].activities || []), event.data.event]
-        };
-        return { ...state, messages: msgs };
-      }
-
-      if (event.type === "done" || event.type === "error" || event.type === "interrupted") {
-        const id = event.requestId;
-        const msgs = [...state.messages];
-        const existingIdx = msgs.findIndex(m => m.requestId === id && m.role === "assistant");
-        if (existingIdx >= 0) {
-          msgs[existingIdx] = { ...msgs[existingIdx], isComplete: true };
-          if (event.type === "error") {
-             msgs[existingIdx].activities = [...(msgs[existingIdx].activities || []), `Error: ${event.data.error}`];
-          }
-        }
-        return { ...state, messages: msgs, activeRunId: state.activeRunId === id ? null : state.activeRunId, isCancelling: state.activeRunId === id ? false : state.isCancelling };
-      }
-
-      if (event.type === "propose_effect") {
-        const id = event.requestId;
-        const msgs = [...state.messages];
-        let existingIdx = msgs.findIndex(m => m.requestId === id && m.role === "assistant");
-        
-        if (existingIdx === -1) {
-          existingIdx = msgs.length;
-          msgs.push({
-            role: "assistant",
-            content: "",
-            requestId: id,
-            activities: [],
-            effects: []
-          });
-        }
-        
-        const effect = event.data.effect;
-        msgs[existingIdx] = {
-          ...msgs[existingIdx],
-          effects: [...(msgs[existingIdx].effects || []), effect]
-        };
-        return { ...state, messages: msgs };
-      }
-
-      if (event.type === "effect_status") {
-        const msgs = [...state.messages];
-        let updated = false;
-        
-        for (let i = 0; i < msgs.length; i++) {
-          const msg = msgs[i];
-          if (msg.role === "assistant" && msg.effects) {
-            const effectIdx = msg.effects.findIndex(e => e.id === event.data.id);
-            if (effectIdx >= 0) {
-              const newEffects = [...msg.effects];
-              newEffects[effectIdx] = { ...newEffects[effectIdx], status: event.data.status };
-              msgs[i] = { ...msg, effects: newEffects };
-              updated = true;
-              break;
+          currentAssistantMsg = null;
+        } else if (entry.kind === "pi.assistant") {
+          const parts = entry.model[0]?.content;
+          if (typeof parts === "string") {
+            if (!currentAssistantMsg) {
+              currentAssistantMsg = { role: "assistant", content: "", requestId: String(entry.id), activities: [], effects: [] };
+              msgs.push(currentAssistantMsg);
+            }
+            currentAssistantMsg.content += parts;
+          } else if (Array.isArray(parts)) {
+            for (const part of parts) {
+              if (part.type === "text") {
+                if (!currentAssistantMsg) {
+                  currentAssistantMsg = { role: "assistant", content: "", requestId: String(entry.id), activities: [], effects: [] };
+                  msgs.push(currentAssistantMsg);
+                }
+                currentAssistantMsg.content += part.text;
+              } else if (part.type === "toolCall") {
+                if (!currentAssistantMsg) {
+                  currentAssistantMsg = { role: "assistant", content: "", requestId: String(entry.id), activities: [], effects: [] };
+                  msgs.push(currentAssistantMsg);
+                }
+                currentAssistantMsg.activities!.push("Using Tool: " + part.name);
+              }
             }
           }
+          lastRequestId = String(entry.id);
+        } else if (entry.kind === "pi.tool-result") {
+           if (currentAssistantMsg) {
+              const res = entry.model[0];
+              let text = "";
+              if (Array.isArray(res.content)) text = res.content.find((c: any) => c.type === "text")?.text || "";
+              else text = res.content;
+              currentAssistantMsg.activities!.push("Result: " + String(text).substring(0, 50) + "...");
+           }
         }
-        
-        if (updated) {
-          return { ...state, messages: msgs };
-        }
-        return state;
       }
 
-      return state;
-    }
-
-function chatReducer(state: ChatState, action: ChatAction): ChatState {
-  switch (action.type) {
-    case "reset":
-      return action.payload || { messages: [], activeRunId: null, isCancelling: false, seenSequences: new Set<number>(), connectionStatus: "connecting" as ConnectionStatus };
-      
-    case "submissionStarted":
-      return {
-        ...state,
-        messages: [...state.messages, {
-          role: "user",
-          content: action.text,
-          requestId: action.idempotencyKey,
-          idempotencyKey: action.idempotencyKey,
-          status: "sending"
-        }]
-      };
-
-    case "submissionAccepted":
-      return {
-        ...state,
-        activeRunId: action.requestId,
-        isCancelling: false,
-        messages: state.messages.map(m => 
-          m.idempotencyKey === action.idempotencyKey 
-            ? { ...m, requestId: action.requestId, status: "delivered" } 
-            : m
-        )
-      };
-
-        case "cancelStarted":
-      return { ...state, isCancelling: true };
-    case "connectionChanged":
-      return { ...state, connectionStatus: action.status };
-    case "eventReceived": {
-      if (state.seenSequences.has(action.event.sequence)) {
-        return state;
+      // Check if the last assistant entry is complete (has a stopReason that isn't null)
+      const lastEntry = view.entries?.[view.entries.length - 1];
+      if (lastEntry?.kind === "pi.assistant" && lastEntry.model?.[0]?.stopReason) {
+        if (currentAssistantMsg) currentAssistantMsg.isComplete = true;
+        setActiveRunId(null);
+      } else if (lastEntry?.kind === "pi.assistant" || lastEntry?.kind === "pi.tool-result" || lastEntry?.kind === "pi.user") {
+         setActiveRunId(lastRequestId);
       }
-      const nextState = applyEvent(state, action.event);
-      if (nextState !== state) {
-        const nextSeen = new Set<number>(state.seenSequences);
-        nextSeen.add(action.event.sequence);
-        return { ...nextState, seenSequences: nextSeen };
+
+      // Overlay pending messages
+      const finalMsgs = [...msgs];
+      for (const pm of pendingMessagesRef.current.values()) {
+        finalMsgs.push(pm);
       }
-      return state;
-    }
-    default:
-      return state;
-  }
-}
+      setMessages(finalMsgs);
+    };
 
-
-const sessionCache = new Map<string, { messages: Message[], activeRunId: string | null, seenSequences: Set<number> }>();
-
-function getInitialState(sessionId: string): ChatState {
-  const cached = sessionCache.get(sessionId);
-  if (cached) {
-    return { ...cached, isCancelling: false, connectionStatus: "connecting" };
-  }
-  return { messages: [], activeRunId: null, isCancelling: false, seenSequences: new Set<number>(), connectionStatus: "connecting" };
-}
-
-export function useChatSession(sessionId: string) {
-  const [state, dispatch] = useReducer(chatReducer, sessionId, getInitialState);
-  const streamRef = useRef<EventSource | null>(null);
-
-  useEffect(() => {
-    sessionCache.set(sessionId, { messages: state.messages, activeRunId: state.activeRunId, seenSequences: state.seenSequences });
-  }, [sessionId, state.messages, state.activeRunId, state.seenSequences]);
-
-  useEffect(() => {
-    const initialState = getInitialState(sessionId);
-    dispatch({ type: "reset", payload: initialState });
-
-    const maxSeq = initialState.seenSequences.size > 0 ? Math.max(...initialState.seenSequences) : 0;
-    const es = new EventSource(`/api/chat/events?sessionId=${encodeURIComponent(sessionId)}&after=${maxSeq}`);
-    streamRef.current = es;
-
-    es.onopen = () => dispatch({ type: "connectionChanged", status: "connected" });
-    es.onerror = () => dispatch({ type: "connectionChanged", status: "disconnected" });
+    const es = new EventSource(`/api/stream?conversationId=${sessionId === "main" ? "" : sessionId}`);
+    
+    es.onopen = () => setConnectionStatus("connected");
+    es.onerror = () => setConnectionStatus("disconnected");
 
     es.onmessage = (e) => {
-      const event: TimelineEvent = JSON.parse(e.data);
-      dispatch({ type: "eventReceived", event });
+      const data = JSON.parse(e.data);
+      if (data.type === "init" || data.type === "update") {
+        processView(data.view);
+      }
     };
 
     return () => {
@@ -276,44 +129,52 @@ export function useChatSession(sessionId: string) {
   }, [sessionId]);
 
   const submitMessage = async (text: string, attachmentIds: string[] = []) => {
-    if (state.activeRunId || !text.trim()) return;
+    if (activeRunId || (!text.trim() && attachmentIds.length === 0)) return;
 
     const idempotencyKey = crypto.randomUUID();
-    dispatch({ type: "submissionStarted", idempotencyKey, text });
+    const pendingMsg: Message = {
+      role: "user",
+      content: text,
+      requestId: idempotencyKey,
+      idempotencyKey,
+      status: "sending"
+    };
+
+    pendingMessagesRef.current.set(idempotencyKey, pendingMsg);
+    setMessages(prev => [...prev, pendingMsg]);
 
     try {
       const res = await fetchWithCsrf("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, message: text, idempotencyKey, attachmentIds })
+        body: JSON.stringify({ 
+          conversationId: sessionId === "main" ? undefined : sessionId, 
+          message: text,
+          attachmentIds
+        })
       });
       
-      if (!res.ok) {
-        console.error("Failed to send message, server returned:", res.status);
-        dispatch({ type: "reset" }); // or handle error state
-        return;
-      }
+      if (!res.ok) throw new Error("Failed to send message");
       
-      const data: { runId?: string } = await res.json();
-      if (data.runId) {
-        dispatch({ type: "submissionAccepted", idempotencyKey, requestId: data.runId });
-      }
+      // Once successfully delivered, we remove it from pending. 
+      // The SSE stream will catch it and render it as part of the official state.
+      pendingMessagesRef.current.delete(idempotencyKey);
+      
     } catch (e) {
       console.error("Failed to send message", e);
+      const m = pendingMessagesRef.current.get(idempotencyKey);
+      if (m) {
+        m.status = "failed";
+        setMessages(prev => [...prev]); // Trigger re-render
+      }
     }
   };
 
-  const stop = async () => { dispatch({ type: "cancelStarted" });
-    await fetchWithCsrf("/api/chat/interrupt", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-    });
+  const stop = async () => {
+    setIsCancelling(true);
+    // TODO: implement interrupt in pi-durable if needed
+    setTimeout(() => setIsCancelling(false), 2000);
   };
 
-  return { messages: state.messages, activeRunId: state.activeRunId, isCancelling: state.isCancelling, connectionStatus: state.connectionStatus, submitMessage, stop };
+  return { messages, activeRunId, isCancelling, connectionStatus, submitMessage, stop };
 }
-
-
-
-
