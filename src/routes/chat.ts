@@ -64,16 +64,24 @@ export function createChatRouter({ harness, modelConfig }: AppDependencies, csrf
 
   // Fork conversation from a specific message
   router.post("/fork/:messageId", csrf, limiter, async (req, res) => {
-    const { messageId } = req.params;
+    const messageIdNum = Number(req.params.messageId) as unknown as import("@earendil-works/pi-durable").EntryId;
     const userId = res.locals.userId;
     
-    // In Pi-Durable, fork works from root. If we want strict security on fork,
-    // we'd have to find the conversation of messageId first. For now, fork succeeds
-    // but the new thread is owned by the forking user.
-    const root = await harness.root(BACKGROUND_CONTEXT);
+    const entry = await harness.commit(async (tx) => {
+      return (await tx.entry(messageIdNum, BACKGROUND_CONTEXT))?.entry;
+    }, BACKGROUND_CONTEXT);
+
+    if (!entry) return res.status(404).json({ error: "Message not found" });
+
+    if (!(await isConversationOwner(String(entry.conversationId), userId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     
-    const thread = await root.fork(
-      Number(messageId) as unknown as import("@earendil-works/pi-durable").EntryId, 
+    const parentConv = await harness.conversation(entry.conversationId, BACKGROUND_CONTEXT);
+    if (!parentConv) return res.status(404).json({ error: "Parent conversation not found" });
+
+    const thread = await parentConv.fork(
+      messageIdNum, 
       { ownership: { kind: "ownerless" } }, 
       BACKGROUND_CONTEXT
     );
