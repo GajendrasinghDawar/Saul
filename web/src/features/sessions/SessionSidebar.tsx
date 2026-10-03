@@ -19,7 +19,7 @@ import {
   useSidebar,
 } from "../../components/ui/sidebar";
 import { UserMenu } from "../auth/UserMenu";
-import { fetchSessions, createSession, SessionItem } from "./session-api";
+import { fetchSessions, createSession, type SessionItem } from "./session-api";
 
 const primaryNavigation = [
   { to: "/mail", label: "Mail", icon: Inbox },
