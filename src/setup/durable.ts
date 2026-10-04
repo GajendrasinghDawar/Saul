@@ -18,7 +18,7 @@ export async function setupDurableHarness(models: Models) {
     { models, registry },
     BACKGROUND_CONTEXT
   )
-  console.log('🚀 Pi Durable Harness Booted')
+  console.log('Pi Durable Harness Booted !!')
 
   return harness
 }

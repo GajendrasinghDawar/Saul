@@ -61,7 +61,9 @@ export function useChatSession(sessionId: string) {
           if (typeof entry.model[0]?.content === 'string')
             text = entry.model[0].content
           else if (Array.isArray(entry.model[0]?.content))
-            text = entry.model[0].content.map((c: { text?: string }) => c.text).join('')
+            text = entry.model[0].content
+              .map((c: { text?: string }) => c.text)
+              .join('')
 
           // Clean up pending optimistic UI messages that have been confirmed by the server
           for (const [key, pm] of pendingMessagesRef.current.entries()) {
