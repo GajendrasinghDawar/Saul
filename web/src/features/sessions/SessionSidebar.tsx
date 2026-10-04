@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { Activity, Settings, Plus, MessageSquare } from "lucide-react";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Activity, MessageSquare, Plus, Settings } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Sidebar,
   SidebarContent,
@@ -16,61 +16,73 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
   useSidebar,
-} from "../../components/ui/sidebar";
-import { UserMenu } from "../auth/UserMenu";
-import { fetchSessions, createSession, type SessionItem } from "./session-api";
+} from '../../components/ui/sidebar'
+import { UserMenu } from '../auth/UserMenu'
+import { createSession, fetchSessions, type SessionItem } from './session-api'
 
 const primaryNavigation = [
-  { to: "/tasks", label: "Tasks", icon: Activity },
-  { to: "/settings", label: "Settings", icon: Settings },
-] as const;
+  { to: '/tasks', label: 'Tasks', icon: Activity },
+  { to: '/settings', label: 'Settings', icon: Settings },
+] as const
 
 export function SessionSidebar() {
-  const { setOpenMobile } = useSidebar();
-  const [sessions, setSessions] = useState<SessionItem[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
-  const pathname = useRouterState({ select: state => state.location.pathname });
-  const navigate = useNavigate();
+  const { setOpenMobile } = useSidebar()
+  const [sessions, setSessions] = useState<SessionItem[]>([])
+  const [isCreating, setIsCreating] = useState(false)
+  const pathname = useRouterState({ select: state => state.location.pathname })
+  const navigate = useNavigate()
 
   const loadSessions = useCallback(async () => {
     try {
-      const items = await fetchSessions();
+      const items = await fetchSessions()
       // Sort by recently updated
-      items.sort((a, b) => b.updated - a.updated);
-      setSessions(items);
+      items.sort((a, b) => b.updated - a.updated)
+      setSessions(items)
     } catch (e) {
-      console.error(e);
+      console.error(e)
     }
-  }, []);
+  }, [])
 
-  useEffect(() => { 
-    void loadSessions(); 
-  }, [loadSessions]);
+  useEffect(() => {
+    void loadSessions()
+  }, [loadSessions])
 
   const handleCreateChat = async () => {
-    if (isCreating) return;
-    setIsCreating(true);
+    if (isCreating) return
+    setIsCreating(true)
     try {
-      const newId = await createSession();
-      await loadSessions();
-      navigate({ to: "/chat/$sessionId", params: { sessionId: newId } });
-      setOpenMobile(false);
+      const newId = await createSession()
+      await loadSessions()
+      navigate({ to: '/chat/$sessionId', params: { sessionId: newId } })
+      setOpenMobile(false)
     } catch (e) {
-      console.error(e);
+      console.error(e)
     } finally {
-      setIsCreating(false);
+      setIsCreating(false)
     }
-  };
+  }
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible='icon'>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild size="lg" tooltip="Lali" className="text-crimson10">
-              <Link to="/" onClick={() => setOpenMobile(false)}>
-                <SidebarMenuIcon layout="position" className="flex size-8 shrink-0 rotate-3 items-center justify-center rounded-lg border border-crimson7 bg-crimson4 text-sm font-black shadow-2">L</SidebarMenuIcon>
-                <SidebarLabel className="text-xl font-bold tracking-tight">Lali</SidebarLabel>
+            <SidebarMenuButton
+              asChild
+              size='lg'
+              tooltip='Lali'
+              className='text-crimson10'
+            >
+              <Link to='/' onClick={() => setOpenMobile(false)}>
+                <SidebarMenuIcon
+                  layout='position'
+                  className='flex size-8 shrink-0 rotate-3 items-center justify-center rounded-lg border border-crimson7 bg-crimson4 text-sm font-black shadow-2'
+                >
+                  L
+                </SidebarMenuIcon>
+                <SidebarLabel className='text-xl font-bold tracking-tight'>
+                  Lali
+                </SidebarLabel>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -78,34 +90,52 @@ export function SessionSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup className="pb-1">
+        <SidebarGroup className='pb-1'>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton variant="outline" tooltip="New chat" onClick={() => void handleCreateChat()} disabled={isCreating}>
-                  <SidebarMenuIcon layout="position" className="flex shrink-0"><Plus /></SidebarMenuIcon>
-                  <SidebarLabel>{isCreating ? "Creating..." : "New chat"}</SidebarLabel>
+                <SidebarMenuButton
+                  variant='outline'
+                  tooltip='New chat'
+                  onClick={() => void handleCreateChat()}
+                  disabled={isCreating}
+                >
+                  <SidebarMenuIcon layout='position' className='flex shrink-0'>
+                    <Plus />
+                  </SidebarMenuIcon>
+                  <SidebarLabel>
+                    {isCreating ? 'Creating...' : 'New chat'}
+                  </SidebarLabel>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup className="py-1">
+        <SidebarGroup className='py-1'>
           <SidebarGroupContent>
             <SidebarMenu>
               {primaryNavigation.map(item => {
-                const Icon = item.icon;
+                const Icon = item.icon
                 return (
                   <SidebarMenuItem key={item.to}>
-                    <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname === item.to}
+                      tooltip={item.label}
+                    >
                       <Link to={item.to} onClick={() => setOpenMobile(false)}>
-                        <SidebarMenuIcon layout="position" className="flex shrink-0"><Icon /></SidebarMenuIcon>
+                        <SidebarMenuIcon
+                          layout='position'
+                          className='flex shrink-0'
+                        >
+                          <Icon />
+                        </SidebarMenuIcon>
                         <SidebarLabel>{item.label}</SidebarLabel>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                );
+                )
               })}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -119,11 +149,26 @@ export function SessionSidebar() {
             <SidebarMenu>
               {/* Always show main conversation first */}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={pathname === "/chat/main"} tooltip="Main Thread">
-                  <Link to="/chat/$sessionId" params={{ sessionId: "main" }} onClick={() => setOpenMobile(false)}>
-                    <SidebarMenuIcon layout="position" className="flex shrink-0"><MessageSquare /></SidebarMenuIcon>
-                    <SidebarLabel className="flex w-full items-center justify-between">
-                      <span className="truncate font-semibold">Main Thread</span>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === '/chat/main'}
+                  tooltip='Main Thread'
+                >
+                  <Link
+                    to='/chat/$sessionId'
+                    params={{ sessionId: 'main' }}
+                    onClick={() => setOpenMobile(false)}
+                  >
+                    <SidebarMenuIcon
+                      layout='position'
+                      className='flex shrink-0'
+                    >
+                      <MessageSquare />
+                    </SidebarMenuIcon>
+                    <SidebarLabel className='flex w-full items-center justify-between'>
+                      <span className='truncate font-semibold'>
+                        Main Thread
+                      </span>
                     </SidebarLabel>
                   </Link>
                 </SidebarMenuButton>
@@ -131,23 +176,36 @@ export function SessionSidebar() {
 
               {sessions.map(session => {
                 // pi-durable root conversation usually has id 1, we map that to 'main' thread
-                if (session.id === "1") return null; 
+                if (session.id === '1') return null
 
-                const active = pathname === `/chat/${session.id}`;
-                const title = `Chat ${session.id}`;
-                
+                const active = pathname === `/chat/${session.id}`
+                const title = `Chat ${session.id}`
+
                 return (
                   <SidebarMenuItem key={session.id}>
-                    <SidebarMenuButton asChild isActive={active} tooltip={title}>
-                      <Link to="/chat/$sessionId" params={{ sessionId: session.id }} onClick={() => setOpenMobile(false)}>
-                        <SidebarMenuIcon layout="position" className="flex shrink-0"><MessageSquare /></SidebarMenuIcon>
-                        <SidebarLabel className="flex w-full items-center justify-between">
-                          <span className="truncate">{title}</span>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      tooltip={title}
+                    >
+                      <Link
+                        to='/chat/$sessionId'
+                        params={{ sessionId: session.id }}
+                        onClick={() => setOpenMobile(false)}
+                      >
+                        <SidebarMenuIcon
+                          layout='position'
+                          className='flex shrink-0'
+                        >
+                          <MessageSquare />
+                        </SidebarMenuIcon>
+                        <SidebarLabel className='flex w-full items-center justify-between'>
+                          <span className='truncate'>{title}</span>
                         </SidebarLabel>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                );
+                )
               })}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -155,7 +213,9 @@ export function SessionSidebar() {
       </SidebarContent>
 
       <SidebarSeparator />
-      <SidebarFooter><UserMenu /></SidebarFooter>
+      <SidebarFooter>
+        <UserMenu />
+      </SidebarFooter>
     </Sidebar>
-  );
+  )
 }

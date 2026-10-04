@@ -44,9 +44,9 @@
     text-wrap: balance;
   }
 
-  .prose h2+*,
-  .prose h3+*,
-  .prose h4+* {
+  .prose h2 + *,
+  .prose h3 + *,
+  .prose h4 + * {
     margin-top: 0;
   }
 
@@ -100,11 +100,11 @@
     margin: 0.5em 0;
   }
 
-  .prose ul>li::marker {
+  .prose ul > li::marker {
     color: var(--color-slate9);
   }
 
-  .prose ol>li::marker {
+  .prose ol > li::marker {
     color: var(--color-slate9);
     font-weight: 400;
   }
@@ -183,11 +183,11 @@
   }
 
   /* Reset first/last spacing */
-  .prose> :first-child {
+  .prose > :first-child {
     margin-top: 0;
   }
 
-  .prose> :last-child {
+  .prose > :last-child {
     margin-bottom: 0;
   }
 }

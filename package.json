@@ -9,7 +9,10 @@
     "dev:web": "npm run dev --prefix web",
     "dev": "concurrently -n backend,agent,web -c blue,yellow,magenta \"npm run dev:backend\" \"npm run dev:agent\" \"npm run dev:web\"",
     "db:push": "drizzle-kit push",
-    "db:seed": "node src/seed.ts"
+    "db:seed": "node src/seed.ts",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "format:fix": "biome check --write ."
   },
   "keywords": [],
   "author": "",
@@ -33,6 +36,7 @@
     "resend": "^6.31.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@types/better-sqlite3": "^9.6.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",

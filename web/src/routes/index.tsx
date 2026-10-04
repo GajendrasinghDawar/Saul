@@ -1,9 +1,9 @@
-import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from '@tanstack/react-router'
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute('/')({
   component: IndexComponent,
-});
+})
 
 function IndexComponent() {
-  return <Navigate to="/chat/$sessionId" params={{ sessionId: "main" }} />;
+  return <Navigate to='/chat/$sessionId' params={{ sessionId: 'main' }} />
 }

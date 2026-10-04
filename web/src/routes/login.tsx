@@ -1,98 +1,122 @@
-import { useState } from "react";
-import { LogIn, Sparkles } from "lucide-react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { LogIn, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { Button } from '../components/ui/Button'
+import { Input } from '../components/ui/Input'
 
-export const Route = createFileRoute("/login")({ component: LoginPage });
+export const Route = createFileRoute('/login')({ component: LoginPage })
 
 function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
+    e.preventDefault()
+    setError(null)
+    setIsSubmitting(true)
     try {
-      const response = await fetch("/api/auth/sign-in/email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch('/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
-      });
-      const data = await response.json();
+      })
+      const data = await response.json()
       if (!response.ok) {
-        throw new Error(data.message || "Invalid email or password");
+        throw new Error(data.message || 'Invalid email or password')
       }
-      window.location.href = "/";
+      window.location.href = '/'
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to sign in");
-      setIsSubmitting(false);
+      setError(cause instanceof Error ? cause.message : 'Unable to sign in')
+      setIsSubmitting(false)
     }
-  };
+  }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-slate2 p-4">
-      <section className="w-full max-w-sm rounded-xl border border-slate5 bg-slate3 p-7 shadow-5">
-        <div className="mb-6 flex size-10 rotate-3 items-center justify-center rounded-lg border border-crimson7 bg-crimson4 text-crimson11 shadow-2">
+    <main className='flex min-h-svh items-center justify-center bg-slate2 p-4'>
+      <section className='w-full max-w-sm rounded-xl border border-slate5 bg-slate3 p-7 shadow-5'>
+        <div className='mb-6 flex size-10 rotate-3 items-center justify-center rounded-lg border border-crimson7 bg-crimson4 text-crimson11 shadow-2'>
           <Sparkles size={19} />
         </div>
-        <h1 className="text-2xl font-bold text-slate12">Sign in to Lali</h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate10">
+        <h1 className='text-2xl font-bold text-slate12'>Sign in to Lali</h1>
+        <p className='mt-2 text-sm leading-relaxed text-slate10'>
           Access your sessions, mail, and assistant workspace.
         </p>
 
-        <form onSubmit={(e) => void handleLogin(e)} className="mt-6 space-y-4">
+        <form onSubmit={e => void handleLogin(e)} className='mt-6 space-y-4'>
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate11">Email</label>
+            <label
+              htmlFor='email'
+              className='mb-1.5 block text-sm font-medium text-slate11'
+            >
+              Email
+            </label>
             <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
+              id='email'
+              type='email'
+              placeholder='you@example.com'
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={e => setEmail(e.target.value)}
               required
             />
           </div>
           <div>
-            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate11">Password</label>
+            <label
+              htmlFor='password'
+              className='mb-1.5 block text-sm font-medium text-slate11'
+            >
+              Password
+            </label>
             <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
+              id='password'
+              type='password'
+              placeholder='••••••••'
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={e => setPassword(e.target.value)}
               required
             />
           </div>
 
-          <div className="flex justify-end">
-            <Link to="/forgot-password" className="text-xs text-crimson11 hover:text-crimson10 hover:underline">
+          <div className='flex justify-end'>
+            <Link
+              to='/forgot-password'
+              className='text-xs text-crimson11 hover:text-crimson10 hover:underline'
+            >
               Forgot password?
             </Link>
           </div>
 
-          <Button className="w-full" variant="primary" disabled={isSubmitting} type="submit">
+          <Button
+            className='w-full'
+            variant='primary'
+            disabled={isSubmitting}
+            type='submit'
+          >
             <LogIn size={17} />
-            {isSubmitting ? "Signing in..." : "Sign in"}
+            {isSubmitting ? 'Signing in...' : 'Sign in'}
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate10">
-          Don't have an account?{" "}
-          <Link to="/signup" className="text-crimson11 hover:text-crimson10 hover:underline">
+        <p className='mt-6 text-center text-sm text-slate10'>
+          Don't have an account?{' '}
+          <Link
+            to='/signup'
+            className='text-crimson11 hover:text-crimson10 hover:underline'
+          >
             Sign up
           </Link>
         </p>
 
         {error && (
-          <p role="alert" className="mt-4 rounded-md border border-red7 bg-red3 p-3 text-sm text-red11">
+          <p
+            role='alert'
+            className='mt-4 rounded-md border border-red7 bg-red3 p-3 text-sm text-red11'
+          >
             {error}
           </p>
         )}
       </section>
     </main>
-  );
+  )
 }

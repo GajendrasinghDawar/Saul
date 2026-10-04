@@ -1,4 +1,19 @@
 export {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from './Collapsible'
+export { Separator } from './Separator'
+export {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from './Sheet'
+export {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -15,10 +30,7 @@ export {
   SidebarMenuSkeleton,
   SidebarSeparator,
   SidebarTrigger,
-} from "./Sidebar";
-export { SidebarMenuButton, SidebarMenuIcon } from "./SidebarMenuButton";
-export { SidebarProvider, useSidebar } from "./SidebarProvider";
-export { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./Sheet";
-export { Separator } from "./Separator";
-export { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./Collapsible";
-export { Skeleton } from "./Skeleton";
+} from './Sidebar'
+export { SidebarMenuButton, SidebarMenuIcon } from './SidebarMenuButton'
+export { SidebarProvider, useSidebar } from './SidebarProvider'
+export { Skeleton } from './Skeleton'
