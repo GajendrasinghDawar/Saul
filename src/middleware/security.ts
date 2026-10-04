@@ -21,7 +21,7 @@ export const securityMiddleware = [
 ]
 
 const csrfConfig = doubleCsrf({
-  getSecret: () => process.env.CSRF_SECRET!, // Safe because env.ts validates this at boot
+  getSecret: () => process.env.CSRF_SECRET || '', // Safe because env.ts validates this at boot
   getSessionIdentifier: (req: express.Request) => {
     // Better-auth uses __Secure- prefix in production
     return (
