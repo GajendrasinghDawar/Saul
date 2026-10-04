@@ -32,13 +32,16 @@ export function createApp(dependencies: AppDependencies) {
   // Better Auth handler - must be before CSRF
   app.use('/api/auth', toNodeHandler(auth))
 
+  // Health check (no auth needed)
+  app.get('/health', (_req, res) => res.json({ status: 'ok' }))
+
   // CSRF token endpoint (no auth needed)
   app.get('/csrf-token', (req, res) => {
     res.json({ csrfToken: generateCsrfToken(req, res) })
   })
 
-  // Auth middleware - protects all remaining API routes
-  app.use(createAuthGuard(auth))
+  // Auth middleware - protects all remaining /api routes
+  app.use('/api', createAuthGuard(auth))
 
   // Mount Feature Routes
   app.use(

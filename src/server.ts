@@ -1,12 +1,16 @@
 import dotenv from 'dotenv'
 import { createApp } from './app.ts'
-import { auth, checkAuthHealth, checkDbHealth } from './auth/auth.ts'
+import { auth } from './auth/auth.ts'
 import { setupAiModel } from './setup/ai.ts'
 import { setupDurableHarness } from './setup/durable.ts'
+import { validateEnvironment } from './setup/env.ts'
 
 dotenv.config({ override: true })
 
 async function startServer() {
+  // 1. Validate environment before doing anything else
+  validateEnvironment()
+
   const { models, providerName, modelId } = setupAiModel()
   const harness = await setupDurableHarness(models)
 
@@ -16,18 +20,10 @@ async function startServer() {
     modelConfig: { providerName, modelId },
   })
 
-  // Health check (no auth needed)
-  app.get('/health', (_req, res) => {
-    const authH = checkAuthHealth()
-    if (authH.status !== 'ok') return res.status(503).json(authH)
-    const dbH = checkDbHealth()
-    if (dbH.status !== 'ok') return res.status(503).json(dbH)
-    res.json({ status: 'ok' })
-  })
-
   const port = process.env.PORT || 3000
+
   app.listen(port, () => {
-    console.log(`🚀 Lali Server running at http://localhost:${port}`)
+    console.log(`Saul, is Server running at http://localhost:${port}`)
   })
 }
 

@@ -73,22 +73,3 @@ export const auth = betterAuth({
 })
 
 export { db as authDb }
-
-export function checkAuthHealth(): {
-  status: 'ok' | 'error'
-  message?: string
-} {
-  if (!process.env.BETTER_AUTH_SECRET) {
-    return { status: 'error', message: 'Missing BETTER_AUTH_SECRET' }
-  }
-  return { status: 'ok' }
-}
-
-export function checkDbHealth(): { status: 'ok' | 'error'; message?: string } {
-  try {
-    // using the shared lali.db
-    return { status: 'ok' }
-  } catch {
-    return { status: 'error', message: 'Auth database not ready' }
-  }
-}
