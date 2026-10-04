@@ -1,6 +1,6 @@
 export function validateEnvironment() {
   const required = ['BETTER_AUTH_SECRET', 'CSRF_SECRET', 'COOKIE_SECRET']
-  
+
   if (process.env.NODE_ENV === 'production') {
     required.push('RESEND_API_KEY')
   }

@@ -64,6 +64,7 @@ export const todos = sqliteTable('todos', {
 export const userConversations = sqliteTable('user_conversations', {
   conversationId: text('conversation_id').primaryKey(),
   userId: text('user_id').notNull(),
+  title: text('title'),
 })
 
 export const approvals = sqliteTable('approvals', {
