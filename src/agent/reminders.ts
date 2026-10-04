@@ -18,11 +18,14 @@ export const ResendNotificationGateway: NotificationGateway = {
   async sendReminder(id: string, message: string) {
     if (!process.env.RESEND_API_KEY) {
       if (process.env.NODE_ENV === 'production') {
-        throw new Error('RESEND_API_KEY is required in production to send reminders.')
+        throw new Error(
+          'RESEND_API_KEY is required in production to send reminders.'
+        )
       }
       console.log(`[Mock Reminder] ${message}`)
       return
     }
+
     const resend = new Resend(process.env.RESEND_API_KEY)
     const { data, error } = await resend.emails.send({
       from: 'Lali <onboarding@resend.dev>',

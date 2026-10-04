@@ -6,7 +6,7 @@ import { db } from '../db/index.ts'
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null
-const fromEmail = 'Lali <onboarding@resend.dev>'
+const fromEmail = 'Lali <onboarding@better-call-saul.ai>'
 
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
