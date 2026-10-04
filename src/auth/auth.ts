@@ -1,60 +1,18 @@
 import { betterAuth } from "better-auth";
-import Database from "better-sqlite3";
+import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import { db } from "../db/index.ts";
 import { Resend } from "resend";
 
-const db = new Database("./lali-auth.db");
-
-// Auto-create better-auth tables if they don't exist
-db.exec(`
-  CREATE TABLE IF NOT EXISTS "user" (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    emailVerified INTEGER NOT NULL DEFAULT 0,
-    image TEXT,
-    createdAt TEXT NOT NULL,
-    updatedAt TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS "session" (
-    id TEXT PRIMARY KEY,
-    expiresAt TEXT NOT NULL,
-    token TEXT NOT NULL UNIQUE,
-    createdAt TEXT NOT NULL,
-    updatedAt TEXT NOT NULL,
-    ipAddress TEXT,
-    userAgent TEXT,
-    userId TEXT NOT NULL REFERENCES "user"(id)
-  );
-  CREATE TABLE IF NOT EXISTS "account" (
-    id TEXT PRIMARY KEY,
-    accountId TEXT NOT NULL,
-    providerId TEXT NOT NULL,
-    userId TEXT NOT NULL REFERENCES "user"(id),
-    accessToken TEXT,
-    refreshToken TEXT,
-    idToken TEXT,
-    accessTokenExpiresAt TEXT,
-    refreshTokenExpiresAt TEXT,
-    scope TEXT,
-    password TEXT,
-    createdAt TEXT NOT NULL,
-    updatedAt TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS "verification" (
-    id TEXT PRIMARY KEY,
-    identifier TEXT NOT NULL,
-    value TEXT NOT NULL,
-    expiresAt TEXT NOT NULL,
-    createdAt TEXT,
-    updatedAt TEXT
-  );
-`);
-
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 const fromEmail = "Lali <onboarding@resend.dev>";
 
 export const auth = betterAuth({
-  database: db,
+  secret: process.env.BETTER_AUTH_SECRET,
+  database: drizzleAdapter(db, {
+    provider: "sqlite",
+  }),
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   trustedOrigins: [
     "http://127.0.0.1:3000",
@@ -66,9 +24,24 @@ export const auth = betterAuth({
     "http://localhost:5175",
     "http://127.0.0.1:5175",
   ],
+  rateLimit: {
+    enabled: true,
+    storage: "database",
+    customRules: {
+      "/api/auth/sign-in/email": { window: 60, max: 5 },
+      "/api/auth/sign-up/email": { window: 60, max: 3 },
+    },
+  },
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24, // 24 hours
+  },
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
+    maxPasswordLength: 256,
+    resetPasswordTokenExpiresIn: 60 * 30, // 30 minutes
+    revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
       if (!resend) {
         console.log(`[Auth] Password reset link for ${user.email}: ${url}`);
@@ -90,12 +63,21 @@ export const auth = betterAuth({
   },
   advanced: {
     useSecureCookies: process.env.NODE_ENV === "production",
+    defaultCookieAttributes: {
+      sameSite: "lax",
+    },
+    ipAddress: {
+      ipAddressHeaders: ["x-forwarded-for"],
+    },
   },
 });
 
 export { db as authDb };
 
-export function checkAuthHealth(): { status: "ok" | "error"; message?: string } {
+export function checkAuthHealth(): {
+  status: "ok" | "error";
+  message?: string;
+} {
   if (!process.env.BETTER_AUTH_SECRET) {
     return { status: "error", message: "Missing BETTER_AUTH_SECRET" };
   }
@@ -104,7 +86,7 @@ export function checkAuthHealth(): { status: "ok" | "error"; message?: string } 
 
 export function checkDbHealth(): { status: "ok" | "error"; message?: string } {
   try {
-    db.prepare("SELECT 1").get();
+    // using the shared lali.db
     return { status: "ok" };
   } catch {
     return { status: "error", message: "Auth database not ready" };

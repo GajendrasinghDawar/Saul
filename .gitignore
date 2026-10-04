@@ -5,7 +5,6 @@ local-turso.db
 web/node_modules
 web/dist
 
-.agents/
 
 docs/temp/
 
