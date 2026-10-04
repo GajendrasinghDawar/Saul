@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { Type } from '@earendil-works/pi-ai'
 import {
   defineExtension,
@@ -7,6 +8,7 @@ import {
   ToolTask,
 } from '@earendil-works/pi-durable'
 import { sql } from 'drizzle-orm'
+import { Resend } from 'resend'
 import { db } from '../db/index.ts'
 import { approvals, todos } from '../db/schema.ts'
 import {
@@ -53,7 +55,19 @@ export const sendDigestEmailTool = defineTool({
   // replay: "none", meaning it will NOT rerun if it crashes mid-flight. Safe from double-sending!
   execute: async (args, api) => {
     api.output(`Sending email...\n`)
-    const { Resend } = await import('resend')
+
+    if (!process.env.RESEND_API_KEY) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error(
+          'RESEND_API_KEY is required in production to send emails.'
+        )
+      }
+      api.output(`[Mock Email] ${args.body}\n`)
+      return {
+        content: [{ type: 'text', text: 'Email sent successfully (mocked).' }],
+      }
+    }
+
     const resend = new Resend(process.env.RESEND_API_KEY)
 
     // We use the api.taskId as our Idempotency Key!

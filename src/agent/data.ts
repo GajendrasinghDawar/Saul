@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.ts'
 import * as schema from '../db/schema.ts'
 
@@ -20,7 +20,10 @@ export async function isConversationOwner(
     .select()
     .from(schema.userConversations)
     .where(
-      sql`${schema.userConversations.conversationId} = ${conversationId} AND ${schema.userConversations.userId} = ${userId}`
+      and(
+        eq(schema.userConversations.conversationId, conversationId),
+        eq(schema.userConversations.userId, userId)
+      )
     )
   return records.length > 0
 }
@@ -29,10 +32,54 @@ export async function getUserConversationIds(
   userId: string
 ): Promise<string[]> {
   const records = await db
-    .select()
+    .select({ conversationId: schema.userConversations.conversationId })
     .from(schema.userConversations)
     .where(eq(schema.userConversations.userId, userId))
   return records.map(r => r.conversationId)
+}
+
+export async function getUserConversations(
+  userId: string
+): Promise<{ conversationId: string; title: string | null }[]> {
+  const records = await db
+    .select({
+      conversationId: schema.userConversations.conversationId,
+      title: schema.userConversations.title,
+    })
+    .from(schema.userConversations)
+    .where(eq(schema.userConversations.userId, userId))
+  return records
+}
+
+export async function renameConversation(
+  conversationId: string,
+  userId: string,
+  title: string
+) {
+  const isOwner = await isConversationOwner(conversationId, userId)
+  if (!isOwner) throw new Error('Not authorized')
+
+  await db
+    .update(schema.userConversations)
+    .set({ title })
+    .where(eq(schema.userConversations.conversationId, conversationId))
+}
+
+export async function deleteUserConversation(
+  conversationId: string,
+  userId: string
+) {
+  const isOwner = await isConversationOwner(conversationId, userId)
+  if (!isOwner) throw new Error('Not authorized')
+
+  await db
+    .delete(schema.userConversations)
+    .where(
+      and(
+        eq(schema.userConversations.conversationId, conversationId),
+        eq(schema.userConversations.userId, userId)
+      )
+    )
 }
 
 export async function setRun(runId: string, status: string) {
