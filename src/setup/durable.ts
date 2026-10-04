@@ -1,11 +1,10 @@
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
+import type { Models } from '@earendil-works/pi-ai'
 import { createRegistry, Harness } from '@earendil-works/pi-durable'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { ReminderExtension } from '../agent/reminders.ts'
 import { SubagentExtension } from '../agent/subagents/tool.ts'
 import { LaliExtension } from '../agent/tools.ts'
-
-import type { Models } from '@earendil-works/pi-ai'
 
 export async function setupDurableHarness(models: Models) {
   const registry = createRegistry()
