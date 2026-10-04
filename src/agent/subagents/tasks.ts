@@ -63,10 +63,9 @@ export const Reporter = defineTask<ReporterInput, ReporterState, null>({
   phases: {
     deliver: async (reporter, runtime, taskContext) => {
       const { name, conversationId, message, followUp } = reporter.input
-      const subagent = (await runtime.conversation(
-        conversationId,
-        taskContext
-      ))!
+      const subagent = await runtime.conversation(conversationId, taskContext)
+      if (!subagent) throw new Error('Subagent conversation not found')
+
       const request = {
         type: 'input',
         content: message,
@@ -91,9 +90,11 @@ export const Reporter = defineTask<ReporterInput, ReporterState, null>({
           )
         }
         if (settled.type !== 'input') return next()
-        const agent = (await tx.doc(Subagents, runtime.conversationId)).agents[
-          name
-        ]!
+
+        const agentsDoc = await tx.doc(Subagents, runtime.conversationId)
+        const agent = agentsDoc.agents[name]
+        if (!agent) throw new Error(`Agent ${name} not found in document`)
+
         if (agent.reported.includes(settled.answer)) return next()
         agent.reported.push(settled.answer)
         const answer = (await tx.entry(AssistantEntry, settled.answer))
@@ -106,10 +107,12 @@ export const Reporter = defineTask<ReporterInput, ReporterState, null>({
     report: async (reporter, runtime, taskContext) => {
       const report = reporter.state.checkpoint.report
       if (report !== undefined) {
-        const main = (await runtime.conversation(
+        const main = await runtime.conversation(
           runtime.conversationId,
           taskContext
-        ))!
+        )
+        if (!main) throw new Error('Main conversation not found')
+
         const input = {
           type: 'input',
           content: report,
