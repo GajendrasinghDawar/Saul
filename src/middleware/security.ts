@@ -16,20 +16,19 @@ export const securityMiddleware = [
       },
     },
   }),
-  express.json({ limit: '10kb' }),
-  cookieParser(process.env.COOKIE_SECRET || 'lali-secret'),
+  express.json({ limit: '2mb' }), // 2mb allows for reasonable AI prompts and images
+  cookieParser(process.env.COOKIE_SECRET), // Safe because env.ts validates this at boot
 ]
 
-
 const csrfConfig = doubleCsrf({
-  getSecret: () => {
-    if (process.env.NODE_ENV === 'production' && !process.env.CSRF_SECRET) {
-      throw new Error('CSRF_SECRET must be set in production')
-    }
-    return process.env.CSRF_SECRET || 'csrf-secret-dev-only'
-  },
+  getSecret: () => process.env.CSRF_SECRET!, // Safe because env.ts validates this at boot
   getSessionIdentifier: (req: express.Request) => {
-    return req.cookies?.['better-auth.session_token'] || 'unknown'
+    // Better-auth uses __Secure- prefix in production
+    return (
+      req.cookies?.['better-auth.session_token'] ||
+      req.cookies?.['__Secure-better-auth.session_token'] ||
+      'unknown'
+    )
   },
   cookieName: 'x-csrf-token',
   cookieOptions: {
@@ -41,4 +40,5 @@ const csrfConfig = doubleCsrf({
 export const doubleCsrfProtection = csrfConfig.doubleCsrfProtection
 export const generateCsrfToken = csrfConfig.generateCsrfToken
 
-export const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10000 })
+// Global rate limiting (feature-specific routes can define stricter limits)
+export const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 2000 })
