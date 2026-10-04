@@ -5,6 +5,8 @@ import {
   defineTool,
 } from '@earendil-works/pi-durable'
 
+import { Resend } from 'resend'
+
 type ReminderInput = { message: string; at: number }
 type ReminderState = { phase: 'wait' } | { phase: 'remind' }
 
@@ -14,7 +16,10 @@ export interface NotificationGateway {
 
 export const ResendNotificationGateway: NotificationGateway = {
   async sendReminder(id: string, message: string) {
-    const { Resend } = await import('resend')
+    if (!process.env.RESEND_API_KEY) {
+      console.log(`[Mock Reminder] ${message}`)
+      return
+    }
     const resend = new Resend(process.env.RESEND_API_KEY)
     const { data, error } = await resend.emails.send({
       from: 'Lali <onboarding@resend.dev>',
@@ -53,10 +58,11 @@ export const ReminderTask = defineTask<ReminderInput, ReminderState, null>({
       )
     },
     remind: async (task, runtime, taskContext) => {
-      const conv = (await runtime.conversation(
+      const conv = await runtime.conversation(
         runtime.conversationId,
         taskContext
-      ))!
+      )
+      if (!conv) throw new Error('Conversation not found for reminder')
 
       // Inject the reminder directly into the conversation
       await conv.submit(
