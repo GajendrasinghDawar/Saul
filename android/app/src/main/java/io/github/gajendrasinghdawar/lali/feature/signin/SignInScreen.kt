@@ -70,10 +70,20 @@ internal fun SignInScreen(state: SignInUiState, onCheckGateway: () -> Unit) {
         }
       }
 
-      // Disabled until the Gateway exposes a native-client authentication contract.
-      Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("Sign in") }
+      // Launch Web Auth via Custom Tab
+      val context = androidx.compose.ui.platform.LocalContext.current
+      Button(
+        onClick = {
+          val url = "http://10.0.2.2:5173/login?client=android"
+          val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+          context.startActivity(intent)
+        },
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        Text("Sign in with Web")
+      }
       Text(
-        "Native sign-in is not available yet.",
+        "Securely authenticate via your browser.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
