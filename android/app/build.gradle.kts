@@ -93,5 +93,6 @@ dependencies {
   // Gateway HTTP
   implementation(libs.ktor.client.core)
   implementation(libs.ktor.client.android)
+  implementation(libs.ktor.client.auth)
   testImplementation(libs.ktor.client.mock)
 }

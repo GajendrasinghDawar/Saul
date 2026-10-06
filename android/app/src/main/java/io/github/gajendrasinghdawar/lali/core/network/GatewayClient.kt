@@ -29,4 +29,16 @@ class GatewayClient(private val http: HttpClient, val baseUrl: String) {
       // Connection refused, timeouts, and cleartext blocked by network security config.
       GatewayHealth.Unreachable
     }
+
+  suspend fun fetchSession(): String? =
+    try {
+      val response = http.get("${baseUrl.trimEnd('/')}/api/auth/get-session")
+      if (response.status == HttpStatusCode.OK) {
+        "Session Active"
+      } else {
+        null
+      }
+    } catch (e: IOException) {
+      null
+    }
 }

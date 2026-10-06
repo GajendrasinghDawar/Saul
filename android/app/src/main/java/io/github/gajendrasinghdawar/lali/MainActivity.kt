@@ -29,7 +29,10 @@ class MainActivity : ComponentActivity() {
     if (data != null && data.scheme == "saul" && data.host == "auth") {
       val token = data.getQueryParameter("token")
       Log.i("MainActivity", "Intercepted saul://auth with token: $token")
-      // We will pass this token to the data store in Ticket 3
+      if (token != null) {
+        val container = (application as LaliApplication).container
+        container.tokenRepository.token = token
+      }
     }
   }
 }
