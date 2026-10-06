@@ -26,6 +26,14 @@ function LoginPage() {
       if (!response.ok) {
         throw new Error(data.message || 'Invalid email or password')
       }
+      
+      const searchParams = new URLSearchParams(window.location.search)
+      if (searchParams.get('client') === 'android') {
+        const token = data.token || data.session?.token || data.session?.id || ''
+        window.location.href = `saul://auth?token=${token}`
+        return
+      }
+
       window.location.href = '/'
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to sign in')
