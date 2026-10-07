@@ -4,3 +4,5 @@
 - realtime multiplayer sync.
 - check security
 - admin only one time setup for saul just like Payload. where we setup only one admin coz our app is not multi-tenant. so we can have a one time setup for admin and then he can create other users.
+
+- point andorid app to server url and andriod app boots from there and works just web but with android specific features like push notifications and background sync, nice ux.
