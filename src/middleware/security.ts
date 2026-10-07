@@ -8,6 +8,8 @@ import { getSecret } from '../secretsManager.ts'
 
 export const securityMiddleware = [
   helmet({
+    crossOriginOpenerPolicy: false,
+    originAgentCluster: false,
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],

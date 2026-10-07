@@ -8,7 +8,7 @@ const resendApiKey = getSecret('RESEND_API_KEY')
 const resend = resendApiKey
   ? new Resend(resendApiKey)
   : null
-const fromEmail = 'Lali <onboarding@better-call-saul.ai>'
+const fromEmail = 'onboarding@resend.dev'
 
 export const auth = betterAuth({
   secret: getSecret('BETTER_AUTH_SECRET', ''),
