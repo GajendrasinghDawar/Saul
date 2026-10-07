@@ -2,11 +2,14 @@
 # deploy.sh - Minimalist, dependency-free deploy script for Saul
 
 # --- Configuration ---
-# Update this with your actual AWS EC2 IP address or domain
-SERVER_IP="1.2.3.4" 
+SERVER_IP="13.127.147.239" 
 SERVER_USER="ubuntu"
 DEST_DIR="/var/www/saul"
 IMAGE_NAME="saul-app"
+
+# If your AWS EC2 requires a specific .pem key, uncomment and set the path below:
+# SSH_KEY_PATH="-i C:/path/to/your/key.pem" 
+SSH_KEY_PATH=""
 
 echo "========================================"
 echo "🚀 Starting Deployment for Saul..."
@@ -23,7 +26,7 @@ fi
 # 2. Ship the compiled app over SSH to the VPS
 echo "🚢 2. Shipping the compiled app over SSH to $SERVER_IP..."
 # This compresses the image, streams it over SSH, and loads it directly into the server's Docker daemon
-docker save $IMAGE_NAME | gzip | ssh $SERVER_USER@$SERVER_IP 'gunzip | docker load'
+docker save $IMAGE_NAME | gzip | ssh $SSH_KEY_PATH $SERVER_USER@$SERVER_IP 'gunzip | docker load'
 if [ $? -ne 0 ]; then
   echo "❌ SSH Transfer failed! Please check your connection and ensure Docker is running on the server."
   exit 1
@@ -32,8 +35,14 @@ fi
 # 3. Restart the public server and Caddy proxy
 echo "🔄 3. Restarting the public server..."
 # We also sync the docker-compose.yml and .env files to ensure the server has the latest config
-rsync -avz docker-compose.yml .env $SERVER_USER@$SERVER_IP:$DEST_DIR/
-ssh $SERVER_USER@$SERVER_IP "cd $DEST_DIR && docker compose up -d"
+# Note: rsync needs special syntax for custom ssh keys: -e "ssh -i key.pem"
+RSYNC_SSH=""
+if [ -n "$SSH_KEY_PATH" ]; then
+  RSYNC_SSH="-e 'ssh $SSH_KEY_PATH'"
+fi
+
+rsync -avz $RSYNC_SSH docker-compose.yml .env $SERVER_USER@$SERVER_IP:$DEST_DIR/
+ssh $SSH_KEY_PATH $SERVER_USER@$SERVER_IP "cd $DEST_DIR && docker compose up -d"
 
 if [ $? -eq 0 ]; then
   echo "✅ Server successfully restarted!"
