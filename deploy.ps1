@@ -11,40 +11,55 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "🚀 Starting Deployment for Saul..." -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-# 1. Build the Web UI and Backend locally
-Write-Host "📦 1. Building the Docker image locally..."
-docker build -t $IMAGE_NAME .
+# 1. Package the source code (Excluding heavy/unnecessary folders)
+Write-Host "📦 1. Zipping source code..."
+# Use Windows native tar to compress the project
+tar.exe -czf saul-src.tar.gz --exclude=node_modules --exclude=.git --exclude=.scratch --exclude=saul-src.tar.gz .
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Build failed! Aborting deployment." -ForegroundColor Red
+    Write-Host "❌ Failed to zip source code." -ForegroundColor Red
     exit 1
 }
 
-# 2. Ship the compiled app over SSH to the VPS
-Write-Host "🚢 2. Shipping the compiled app over SSH to $SERVER_IP..."
-# We use cmd.exe here because native PowerShell pipelines can sometimes corrupt binary Docker streams
+# 2. Ship the code to the VPS
+Write-Host "🚢 2. Uploading code to $SERVER_IP..."
+$ScpCommand = "scp"
 $SshCommand = "ssh"
 if ($SSH_KEY_PATH) {
+    $ScpCommand = "scp $SSH_KEY_PATH"
     $SshCommand = "ssh $SSH_KEY_PATH"
 }
-cmd.exe /c "docker save $IMAGE_NAME | gzip | $SshCommand $SERVER_USER@$SERVER_IP `"gunzip | docker load`""
+
+# Ensure destination directory exists
+Invoke-Expression "$SshCommand $SERVER_USER@$SERVER_IP `"mkdir -p $DEST_DIR`""
+
+# Upload the zip file
+Invoke-Expression "$ScpCommand saul-src.tar.gz ${SERVER_USER}@${SERVER_IP}:$DEST_DIR/"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ SSH Transfer failed! Please check your connection and ensure Docker is running on the server." -ForegroundColor Red
+    Write-Host "❌ SCP Transfer failed!" -ForegroundColor Red
     exit 1
 }
 
-# 3. Restart the public server and Caddy proxy
-Write-Host "🔄 3. Restarting the public server..."
-# Using scp instead of rsync since scp is natively built into Windows 10/11 OpenSSH
-$ScpCommand = "scp"
-if ($SSH_KEY_PATH) {
-    $ScpCommand = "scp $SSH_KEY_PATH"
-}
-Invoke-Expression "$ScpCommand docker-compose.yml .env ${SERVER_USER}@${SERVER_IP}:$DEST_DIR/"
+# Clean up local zip
+Remove-Item saul-src.tar.gz -ErrorAction SilentlyContinue
 
-Invoke-Expression "$SshCommand $SERVER_USER@$SERVER_IP `"cd $DEST_DIR && docker compose up -d`""
+# 3. Build and Restart on the Server
+Write-Host "🔄 3. Building and restarting the server (This may take a few minutes)..."
+$RemoteScript = @"
+cd $DEST_DIR
+tar -xzf saul-src.tar.gz
+rm saul-src.tar.gz
+echo '🧹 Cleaning up old Docker files to save disk space...'
+docker system prune -f
+echo '🏗️ Building new Docker image...'
+docker build -t $IMAGE_NAME .
+echo '🚀 Starting Docker Compose...'
+docker compose up -d
+"@
+
+Invoke-Expression "$SshCommand $SERVER_USER@$SERVER_IP `"$RemoteScript`""
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "✅ Server successfully restarted!" -ForegroundColor Green
+    Write-Host "✅ Server successfully updated and restarted!" -ForegroundColor Green
     
     # 4. Backup to GitHub
     Write-Host "💾 4. Backing up code to GitHub..."
@@ -54,5 +69,5 @@ if ($LASTEXITCODE -eq 0) {
     
     Write-Host "🎉 Deployment complete! Your app is live." -ForegroundColor Green
 } else {
-    Write-Host "❌ Server restart failed. Code was NOT pushed to GitHub." -ForegroundColor Red
+    Write-Host "❌ Server build/restart failed." -ForegroundColor Red
 }
