@@ -128,9 +128,29 @@ export class ChatService {
       BACKGROUND_CONTEXT
     )
 
+    // Build a title from the forked message content + parent chat name
+    const parentRecord = await db
+      .select({ title: userConversations.title })
+      .from(userConversations)
+      .where(eq(userConversations.conversationId, String(entry.conversationId)))
+      .limit(1)
+    const parentTitle = parentRecord[0]?.title ?? `Chat ${entry.conversationId}`
+
+    let forkTitle: string
+    const messageText = extractEntryText(entry.model)
+    if (messageText) {
+      const truncated =
+        messageText.length > 30
+          ? `${messageText.substring(0, 30)}...`
+          : messageText
+      forkTitle = `${truncated} (from ${parentTitle})`
+    } else {
+      forkTitle = `Fork: ${parentTitle}`
+    }
+
     await db
       .insert(userConversations)
-      .values({ conversationId: String(thread.id), userId })
+      .values({ conversationId: String(thread.id), userId, title: forkTitle })
 
     return {
       newConversationId: thread.id,
@@ -141,4 +161,22 @@ export class ChatService {
   async getConversationStream(conversationId: ConversationId) {
     return await this.harness.conversation(conversationId, BACKGROUND_CONTEXT)
   }
+}
+
+/** Extract plain text from a pi-durable entry's model messages. */
+function extractEntryText(
+  model: ReadonlyArray<{ content?: unknown }> | undefined
+): string {
+  if (!model?.[0]?.content) return ''
+  const content = model[0].content
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .filter(
+        (c: { type?: string; text?: string }) => c.type === 'text' && c.text
+      )
+      .map((c: { text?: string }) => c.text)
+      .join('')
+  }
+  return ''
 }
