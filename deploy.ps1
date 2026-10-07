@@ -30,7 +30,7 @@ if ($SSH_KEY_PATH) {
 }
 
 # Ensure destination directory exists and has correct permissions
-Invoke-Expression "$SshCommand $SERVER_USER@$SERVER_IP `"sudo mkdir -p $DEST_DIR && sudo chown -R $SERVER_USER:$SERVER_USER $DEST_DIR`""
+Invoke-Expression "$SshCommand $SERVER_USER@$SERVER_IP `"sudo mkdir -p $DEST_DIR && sudo chown -R ${SERVER_USER}:${SERVER_USER} $DEST_DIR`""
 
 # Upload the zip file
 Invoke-Expression "$ScpCommand saul-src.tar.gz ${SERVER_USER}@${SERVER_IP}:$DEST_DIR/"
