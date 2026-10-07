@@ -106,9 +106,9 @@ function TasksPage() {
                     )}
                   </div>
                 </div>
-                {task.state?.checkpoint && (
+                {Boolean(task.state?.checkpoint) && (
                   <div className='mt-3 rounded bg-slate2 p-2 text-xs font-mono text-slate11 overflow-auto max-h-40'>
-                    {JSON.stringify(task.state.checkpoint, null, 2)}
+                    {JSON.stringify(task.state?.checkpoint, null, 2) ?? ''}
                   </div>
                 )}
               </li>

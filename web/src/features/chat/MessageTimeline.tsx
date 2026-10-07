@@ -50,6 +50,7 @@ export function MessageTimeline({
                 <AssistantMessage
                   key={`assistant-${message.requestId}`}
                   content={message.content}
+                  thinkingContent={message.thinkingContent}
                   activities={message.activities}
                   effects={message.effects}
                   isComplete={message.isComplete}

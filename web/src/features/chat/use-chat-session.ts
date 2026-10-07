@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { fetchWithCsrf } from '../../lib/api'
+import { type ChatView, projectChatView } from './chat-view'
 
 export type Message = {
   role: 'user' | 'assistant'
   content: string
+  thinkingContent?: string
   requestId: string
   idempotencyKey?: string
   status?: 'sending' | 'delivered' | 'failed'
@@ -34,14 +36,17 @@ export type Effect = {
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 
+type StreamEvent = {
+  type?: 'init' | 'update'
+  view?: ChatView
+}
+
 export function useChatSession(sessionId: string) {
   const [messages, setMessages] = useState<Message[]>([])
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>('connecting')
-
-  // Keep a ref to pending messages so we can overlay them on the server state
   const pendingMessagesRef = useRef<Map<string, Message>>(new Map())
 
   useEffect(() => {
@@ -49,171 +54,49 @@ export function useChatSession(sessionId: string) {
     setMessages([])
     pendingMessagesRef.current.clear()
 
-    // Map pi-durable entries (which are Git-like commit nodes) to our UI Message format
-    // biome-ignore lint/suspicious/noExplicitAny: complex structure
-    const processView = (view: any) => {
-      const msgs: Message[] = []
-      let currentAssistantMsg: Message | null = null
-      let lastRequestId: string | null = null
+    const processView = (view: ChatView) => {
+      const projection = projectChatView(view)
 
-      // view.entries contains the conversation thread path from root to leaf
-      for (const entry of view.entries || []) {
-        if (entry.kind === 'pi.user') {
-          let text = ''
-          if (typeof entry.model[0]?.content === 'string')
-            text = entry.model[0].content
-          else if (Array.isArray(entry.model[0]?.content))
-            text = entry.model[0].content
-              .map((c: { text?: string }) => c.text)
-              .join('')
-
-          // Clean up pending optimistic UI messages that have been confirmed by the server
-          for (const [key, pm] of pendingMessagesRef.current.entries()) {
-            if (pm.content === text) {
-              pendingMessagesRef.current.delete(key)
-            }
-          }
-
-          msgs.push({
-            role: 'user',
-            content: text,
-            requestId: String(entry.id),
-            status: 'delivered',
-          })
-          currentAssistantMsg = null
-        } else if (entry.kind === 'pi.assistant') {
-          // LLM outputs stream here. pi.assistant merges text and toolCall chunks
-          const parts = entry.model[0]?.content
-          if (typeof parts === 'string') {
-            if (!currentAssistantMsg) {
-              currentAssistantMsg = {
-                role: 'assistant',
-                content: '',
-                requestId: String(entry.id),
-                activities: [],
-                effects: [],
-              }
-              msgs.push(currentAssistantMsg)
-            }
-            currentAssistantMsg.content += parts
-          } else if (Array.isArray(parts)) {
-            for (const part of parts) {
-              if (part.type === 'text') {
-                if (!currentAssistantMsg) {
-                  currentAssistantMsg = {
-                    role: 'assistant',
-                    content: '',
-                    requestId: String(entry.id),
-                    activities: [],
-                    effects: [],
-                  }
-                  msgs.push(currentAssistantMsg)
-                }
-                currentAssistantMsg.content += part.text
-              } else if (part.type === 'toolCall') {
-                if (!currentAssistantMsg) {
-                  currentAssistantMsg = {
-                    role: 'assistant',
-                    content: '',
-                    requestId: String(entry.id),
-                    activities: [],
-                    effects: [],
-                  }
-                  msgs.push(currentAssistantMsg)
-                }
-                currentAssistantMsg.activities?.push(`Using Tool: ${part.name}`)
-              }
-            }
-          }
-          lastRequestId = String(entry.id)
-        } else if (entry.kind === 'pi.tool-result') {
-          if (currentAssistantMsg) {
-            const res = entry.model[0]
-            let text = ''
-            if (Array.isArray(res.content))
-              text =
-                res.content.find(
-                  (c: { type: string; text?: string }) => c.type === 'text'
-                )?.text || ''
-            else text = res.content
-
-            // We use a convention where the pi-durable backend can return
-            // a block response containing [APPROVAL REQUIRED] to trigger a UI interaction.
-            if (text.startsWith('[APPROVAL REQUIRED]')) {
-              const proposalIdMatch = text.match(/Proposal ID: (.*?)\./)
-              if (proposalIdMatch) {
-                currentAssistantMsg.effects?.push({
-                  id: proposalIdMatch[1],
-                  type: 'approval',
-                  summary: 'Action requires your approval',
-                  status: 'pending',
-                })
-              }
-            } else {
-              currentAssistantMsg.activities?.push(
-                `Result: ${String(text).substring(0, 50)}...`
-              )
-            }
+      for (const message of projection.messages) {
+        if (message.role !== 'user') continue
+        for (const [key, pending] of pendingMessagesRef.current.entries()) {
+          if (pending.content === message.content) {
+            pendingMessagesRef.current.delete(key)
           }
         }
       }
 
-      // Check if the last assistant entry is complete (has a stopReason that isn't null).
-      // This indicates the Pi Durable run loop has yielded and is no longer busy.
-      const lastEntry = view.entries?.[view.entries.length - 1]
-      const isBusy =
-        (lastEntry?.kind === 'pi.assistant' ||
-          lastEntry?.kind === 'pi.tool-result') &&
-        !lastEntry?.model?.[0]?.stopReason
-
+      setActiveRunId(projection.activeRunId)
       if (
-        lastEntry?.kind === 'pi.assistant' &&
-        lastEntry.model?.[0]?.stopReason
+        !projection.isBusy &&
+        window.sessionStorage.getItem(`busy-${sessionId}`)
       ) {
-        if (currentAssistantMsg) currentAssistantMsg.isComplete = true
-        setActiveRunId(null)
-      } else if (
-        lastEntry?.kind === 'pi.assistant' ||
-        lastEntry?.kind === 'pi.tool-result' ||
-        lastEntry?.kind === 'pi.user'
-      ) {
-        setActiveRunId(lastRequestId)
-      }
-
-      // Dispatch event to sync sidebar when the stream transitions from busy to idle
-      if (!isBusy && window.sessionStorage.getItem(`busy-${sessionId}`)) {
         window.sessionStorage.removeItem(`busy-${sessionId}`)
         window.dispatchEvent(new CustomEvent('chat-updated'))
-      } else if (isBusy) {
+      } else if (projection.isBusy) {
         window.sessionStorage.setItem(`busy-${sessionId}`, 'true')
       }
 
-      // Overlay pending messages
-      const finalMsgs = [...msgs]
-      for (const pm of pendingMessagesRef.current.values()) {
-        finalMsgs.push(pm)
-      }
-      setMessages(finalMsgs)
+      setMessages([
+        ...projection.messages,
+        ...pendingMessagesRef.current.values(),
+      ])
     }
 
-    // Connect to the Pi Durable SSE stream endpoint
     const es = new EventSource(
       `/api/stream?conversationId=${sessionId === 'main' ? '' : sessionId}`
     )
 
     es.onopen = () => setConnectionStatus('connected')
     es.onerror = () => setConnectionStatus('disconnected')
-
-    es.onmessage = e => {
-      const data = JSON.parse(e.data)
-      if (data.type === 'init' || data.type === 'update') {
+    es.onmessage = event => {
+      const data = JSON.parse(event.data) as StreamEvent
+      if ((data.type === 'init' || data.type === 'update') && data.view) {
         processView(data.view)
       }
     }
 
-    return () => {
-      es.close()
-    }
+    return () => es.close()
   }, [sessionId])
 
   const submitMessage = async (
@@ -224,14 +107,15 @@ export function useChatSession(sessionId: string) {
     if (
       (activeRunId && whenBusy !== 'steer') ||
       (!text.trim() && attachmentIds.length === 0)
-    )
+    ) {
       return
+    }
 
     const idempotencyKey =
       typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : Date.now().toString(36) + Math.random().toString(36).substring(2)
-    const pendingMsg: Message = {
+    const pendingMessage: Message = {
       role: 'user',
       content: text,
       requestId: idempotencyKey,
@@ -239,11 +123,11 @@ export function useChatSession(sessionId: string) {
       status: 'sending',
     }
 
-    pendingMessagesRef.current.set(idempotencyKey, pendingMsg)
-    setMessages(prev => [...prev, pendingMsg])
+    pendingMessagesRef.current.set(idempotencyKey, pendingMessage)
+    setMessages(current => [...current, pendingMessage])
 
     try {
-      const res = await fetchWithCsrf('/api/chat', {
+      const response = await fetchWithCsrf('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -254,25 +138,26 @@ export function useChatSession(sessionId: string) {
         }),
       })
 
-      if (!res.ok) throw new Error(`Failed to send message: ${res.status}`)
-
-      // We no longer manually delete the pending message here!
-      // The SSE stream (processView) will match the content and delete it when the server confirms it,
-      // avoiding any UI flicker.
-    } catch (e) {
-      console.error('Failed to send message', e)
-
-      // Improve UX: show a toast when a message fails to send (like a 404)
-      if (e instanceof Error && e.message.includes('404')) {
+      if (!response.ok) {
+        throw new Error(`Failed to send message: ${response.status}`)
+      }
+    } catch (error) {
+      console.error('Failed to send message', error)
+      if (error instanceof Error && error.message.includes('404')) {
         toast.error('Conversation not found. It may have been deleted.')
       } else {
         toast.error('Failed to send message. Please try again.')
       }
 
-      const m = pendingMessagesRef.current.get(idempotencyKey)
-      if (m) {
-        m.status = 'failed'
-        setMessages(prev => [...prev]) // Trigger re-render
+      const pending = pendingMessagesRef.current.get(idempotencyKey)
+      if (pending) {
+        const failed: Message = { ...pending, status: 'failed' }
+        pendingMessagesRef.current.set(idempotencyKey, failed)
+        setMessages(current =>
+          current.map(message =>
+            message.requestId === idempotencyKey ? failed : message
+          )
+        )
       }
     }
   }
@@ -285,16 +170,16 @@ export function useChatSession(sessionId: string) {
 
   const forkMessage = async (messageId: string) => {
     try {
-      const res = await fetchWithCsrf(`/api/fork/${messageId}`, {
+      const response = await fetchWithCsrf(`/api/fork/${messageId}`, {
         method: 'POST',
       })
-      if (!res.ok) throw new Error('Failed to fork conversation')
-      const data = await res.json()
+      if (!response.ok) throw new Error('Failed to fork conversation')
+      const data = (await response.json()) as { newConversationId: string }
       window.dispatchEvent(new CustomEvent('chat-updated'))
       return data.newConversationId
-    } catch (e) {
-      console.error('Fork failed', e)
-      throw e
+    } catch (error) {
+      console.error('Fork failed', error)
+      throw error
     }
   }
 

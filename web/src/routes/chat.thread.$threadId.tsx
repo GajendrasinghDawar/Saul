@@ -183,13 +183,23 @@ function ChatTab() {
               id: string
               message?: string
               user?: { id: string }
-              model?: { content?: { type: string; text?: string }[] }[]
+              model?: {
+                content?: string | { type: string; text?: string }[]
+              }[]
             }) => {
               if (entry.kind === 'pi.user') {
+                const content = entry.model?.[0]?.content
+                const text =
+                  typeof content === 'string'
+                    ? content
+                    : content
+                        ?.filter(part => part.type === 'text')
+                        .map(part => part.text ?? '')
+                        .join('')
                 return (
                   <div key={entry.id} className='flex flex-col items-end group'>
                     <div className='bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%]'>
-                      {entry.model?.[0]?.content}
+                      {text}
                     </div>
                     <button
                       type='button'
@@ -202,16 +212,17 @@ function ChatTab() {
                 )
               }
               if (entry.kind === 'pi.assistant') {
+                const content = entry.model?.[0]?.content
                 const textContent =
-                  entry.model?.[0]?.content
-                    ?.filter(
-                      (c: { type: string; text?: string }) => c.type === 'text'
-                    )
-                    ?.map((c: { type: string; text?: string }) => c.text)
-                    ?.join('') || ''
-                const hasTools = entry.model?.[0]?.content?.some(
-                  (c: { type: string }) => c.type === 'toolCall'
-                )
+                  typeof content === 'string'
+                    ? content
+                    : (content
+                        ?.filter(part => part.type === 'text')
+                        .map(part => part.text ?? '')
+                        .join('') ?? '')
+                const hasTools =
+                  Array.isArray(content) &&
+                  content.some(part => part.type === 'toolCall')
                 return (
                   <div
                     key={entry.id}
@@ -238,14 +249,18 @@ function ChatTab() {
                 )
               }
               if (entry.kind === 'pi.tool-result') {
+                const content = entry.model?.[0]?.content
+                const text =
+                  typeof content === 'string'
+                    ? content
+                    : (content?.[0]?.text ?? 'Tool completed.')
                 return (
                   <div
                     key={entry.id}
                     className='flex flex-col items-start pl-8 my-2'
                   >
                     <div className='bg-purple-50 border border-purple-100 text-purple-800 rounded-lg px-3 py-2 text-xs font-mono max-w-[80%]'>
-                      {entry.model?.[0]?.content?.[0]?.text ||
-                        'Tool completed.'}
+                      {text}
                     </div>
                   </div>
                 )

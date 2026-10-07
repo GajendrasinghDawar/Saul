@@ -1,14 +1,19 @@
-import { Check, Copy, GitFork, Sparkles } from 'lucide-react'
-import { motion, useReducedMotion } from 'motion/react'
+import { Check, Copy, GitFork } from 'lucide-react'
 import { useState } from 'react'
-import { Action, Actions } from '../../components/ui/Actions'
+import {
+  Message,
+  MessageAction,
+  MessageActions,
+  MessageContent,
+  MessageResponse,
+} from '../../components/message'
 import { EffectCard } from '../effects/EffectCard'
 import { ActivityItem } from './ActivityItem'
-import { MarkdownText } from './MarkdownText'
 import type { Effect } from './use-chat-session'
 
 type AssistantMessageProps = {
   content: string
+  thinkingContent?: string
   activities?: string[]
   effects?: Effect[]
   isComplete?: boolean
@@ -21,6 +26,7 @@ type AssistantMessageProps = {
 
 export function AssistantMessage({
   content,
+  thinkingContent,
   activities = [],
   effects = [],
   isComplete,
@@ -31,31 +37,42 @@ export function AssistantMessage({
   onReject,
 }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false)
-  const reduceMotion = useReducedMotion()
+  let displayContent = content
+  let displayThinking = thinkingContent ?? ''
+
+  const thinkMatch = displayContent.match(/<think>([\s\S]*?)<\/think>/)
+  if (thinkMatch) {
+    displayThinking = `${displayThinking}\n${thinkMatch[1]}`.trim()
+    displayContent = displayContent.replace(thinkMatch[0], '')
+  } else if (displayContent.includes('<think>')) {
+    const [answer, thinking] = displayContent.split('<think>')
+    displayContent = answer
+    displayThinking = `${displayThinking}\n${thinking}`.trim()
+  }
+
   const copy = async () => {
-    await navigator.clipboard.writeText(content)
+    await navigator.clipboard.writeText(displayContent)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
+
   return (
-    <motion.article
-      initial={{ opacity: 0, y: reduceMotion ? 0 : 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reduceMotion ? 0 : 0.15 }}
-      className={`group/message flex w-full items-start gap-2 md:gap-3 ${isLast ? 'min-h-[50svh]' : ''}`}
-      data-role='assistant'
-    >
-      <div className='-mt-1 flex size-8 shrink-0 items-center justify-center rounded-md text-jade10'>
-        <Sparkles size={14} />
-      </div>
-      <div className='min-w-0 flex-1'>
-        {(active || activities.length > 0) && (
-          <ActivityItem activities={activities} active={active} />
+    <Message from='assistant' className={isLast ? 'min-h-[50svh]' : undefined}>
+      <MessageContent>
+        {(active || activities.length > 0 || displayThinking) && (
+          <ActivityItem
+            activities={activities}
+            active={active}
+            thinking={displayThinking}
+          />
         )}
-        {content && (
-          <div className='prose max-w-none'>
-            <MarkdownText content={content} />
-          </div>
+        {displayContent && (
+          <MessageResponse
+            mode={active ? 'streaming' : 'static'}
+            isAnimating={active}
+          >
+            {displayContent}
+          </MessageResponse>
         )}
         {effects.length > 0 && (
           <div className='mt-4 space-y-3'>
@@ -69,22 +86,26 @@ export function AssistantMessage({
             ))}
           </div>
         )}
-        {content && isComplete && (
-          <Actions className='mt-2 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100'>
-            <Action
-              tooltip={copied ? 'Copied' : 'Copy response'}
-              onClick={() => void copy()}
+      </MessageContent>
+
+      {displayContent && isComplete && (
+        <MessageActions className='opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100'>
+          <MessageAction
+            tooltip={copied ? 'Copied' : 'Copy response'}
+            onClick={() => void copy()}
+          >
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+          </MessageAction>
+          {onFork && (
+            <MessageAction
+              tooltip='Fork conversation from here'
+              onClick={onFork}
             >
-              {copied ? <Check size={15} /> : <Copy size={15} />}
-            </Action>
-            {onFork && (
-              <Action tooltip='Fork conversation from here' onClick={onFork}>
-                <GitFork size={15} />
-              </Action>
-            )}
-          </Actions>
-        )}
-      </div>
-    </motion.article>
+              <GitFork size={15} />
+            </MessageAction>
+          )}
+        </MessageActions>
+      )}
+    </Message>
   )
 }
