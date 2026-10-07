@@ -49,11 +49,11 @@ cd $DEST_DIR
 tar -xzf saul-src.tar.gz
 rm saul-src.tar.gz
 echo '🧹 Cleaning up old Docker files to save disk space...'
-docker system prune -f
+sudo docker system prune -f
 echo '🏗️ Building new Docker image...'
-docker build -t $IMAGE_NAME .
+sudo docker build -t $IMAGE_NAME .
 echo '🚀 Starting Docker Compose...'
-docker compose up -d
+sudo docker compose up -d
 "@
 
 Invoke-Expression "$SshCommand $SERVER_USER@$SERVER_IP `"$RemoteScript`""
