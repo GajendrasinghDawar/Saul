@@ -48,8 +48,10 @@ $RemoteScript = @"
 cd $DEST_DIR
 tar -xzf saul-src.tar.gz
 rm saul-src.tar.gz
-echo '🧹 Cleaning up old Docker files to save disk space...'
-sudo docker system prune -f
+echo '🧹 Aggressively cleaning up server to save disk space...'
+sudo apt-get clean
+sudo journalctl --vacuum-time=1h
+sudo docker system prune -af --volumes
 echo '🏗️ Building new Docker image...'
 sudo docker build -t $IMAGE_NAME .
 echo '🚀 Starting Docker Compose...'
