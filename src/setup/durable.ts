@@ -12,7 +12,7 @@ export async function setupDurableHarness(models: Models) {
   registry.install(SubagentExtension)
   registry.install(ReminderExtension)
 
-  const storage = await openNodeSqliteStorage('./lali-durable.sqlite')
+  const storage = await openNodeSqliteStorage('./data/lali-durable.sqlite')
   const harness = await Harness.open(
     storage,
     { models, registry },
