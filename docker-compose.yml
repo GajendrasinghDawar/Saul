@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  saul-api:
+    build: .
+    image: saul-app:latest
+    container_name: saul_backend
+    restart: unless-stopped
+    # We removed the 'ports' section. The app is only accessible through Caddy.
+    env_file:
+      - .env
+    volumes:
+      - saul-data:/app/data
+
+  caddy:
+    image: caddy:latest
+    container_name: saul_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    # We use an environment variable so you can easily change the domain in your .env file
+    # If DOMAIN is not set in .env, it falls back to localhost for local testing.
+    command: caddy reverse-proxy --from https://${DOMAIN:-localhost} --to http://saul-api:3000
+    env_file:
+      - .env
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - saul-api
+
+volumes:
+  saul-data:
+  caddy_data:
+  caddy_config:

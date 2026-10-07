@@ -27,6 +27,14 @@ function SignupPage() {
       if (!response.ok) {
         throw new Error(data.message || 'Unable to create account')
       }
+
+      const searchParams = new URLSearchParams(window.location.search)
+      if (searchParams.get('client') === 'android') {
+        const token = data.token || data.session?.token || data.session?.id || ''
+        window.location.href = `saul://auth?token=${token}`
+        return
+      }
+
       window.location.href = '/'
     } catch (cause) {
       setError(
@@ -113,6 +121,7 @@ function SignupPage() {
           Already have an account?{' '}
           <Link
             to='/login'
+            search={(prev) => prev}
             className='text-crimson11 hover:text-crimson10 hover:underline'
           >
             Sign in

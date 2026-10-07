@@ -30,6 +30,19 @@ Saul, A personal AI assistant agent you talk to over Telegram, web or Andriod. R
 
 ## Agent skills
 
+### Issue tracker
+Issues are tracked on GitHub using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+The default 5-role triage vocabulary is used. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+Single-context layout (root GLOSSARY.md and docs/adr/). See `docs/agents/domain.md`.
+
+## Android Client
+
+- The Android app must be completely identical to the web UI in terms of its design system and color theming.
+
 ## Pi-Durable Architecture
 
 This project uses **Pi-Durable** for its autonomous agent execution engine.

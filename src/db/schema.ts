@@ -95,3 +95,12 @@ export const rateLimit = sqliteTable('rateLimit', {
   count: integer('count').notNull(),
   lastRequest: integer('lastRequest').notNull(),
 })
+
+export const secrets = sqliteTable('secrets', {
+  name: text('name').primaryKey(), // e.g. OPENAI_API_KEY
+  value: text('value').notNull(),
+  kind: text('kind').notNull(), // 'secret' or 'env'
+  allowedHosts: text('allowedHosts'), // JSON array of allowed hosts for secrets, optional
+  updatedAt: integer('updatedAt', { mode: 'timestamp' }).notNull(),
+  updatedBy: text('updatedBy'), // user id
+})

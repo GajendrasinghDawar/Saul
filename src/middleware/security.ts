@@ -4,6 +4,8 @@ import express from 'express'
 import rateLimit from 'express-rate-limit'
 import helmet from 'helmet'
 
+import { getSecret } from '../secretsManager.ts'
+
 export const securityMiddleware = [
   helmet({
     contentSecurityPolicy: {
@@ -17,11 +19,11 @@ export const securityMiddleware = [
     },
   }),
   express.json({ limit: '2mb' }), // 2mb allows for reasonable AI prompts and images
-  cookieParser(process.env.COOKIE_SECRET), // Safe because env.ts validates this at boot
+  cookieParser(getSecret('COOKIE_SECRET')), // Safe because env.ts validates this at boot
 ]
 
 const csrfConfig = doubleCsrf({
-  getSecret: () => process.env.CSRF_SECRET || '', // Safe because env.ts validates this at boot
+  getSecret: () => getSecret('CSRF_SECRET', ''), // Safe because env.ts validates this at boot
   getSessionIdentifier: (req: express.Request) => {
     // Better-auth uses __Secure- prefix in production
     return (
@@ -33,7 +35,7 @@ const csrfConfig = doubleCsrf({
   cookieName: 'x-csrf-token',
   cookieOptions: {
     sameSite: 'lax' as const,
-    secure: process.env.NODE_ENV === 'production',
+    secure: getSecret('NODE_ENV') === 'production',
   },
 })
 

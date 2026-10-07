@@ -7,15 +7,22 @@ import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.auth.Auth
 import io.ktor.client.plugins.auth.providers.BearerTokens
 import io.ktor.client.plugins.auth.providers.bearer
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import android.content.SharedPreferences
 
 class TokenRepository(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
 
+    private val _tokenFlow = MutableStateFlow(prefs.getString("token", null))
+    val tokenFlow: StateFlow<String?> = _tokenFlow.asStateFlow()
+
     var token: String?
         get() = prefs.getString("token", null)
         set(value) {
             prefs.edit().putString("token", value).apply()
+            _tokenFlow.value = value
         }
 }
 

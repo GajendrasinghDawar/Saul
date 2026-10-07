@@ -2,18 +2,20 @@ import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { betterAuth } from 'better-auth'
 import { Resend } from 'resend'
 import { db } from '../db/index.ts'
+import { getSecret } from '../secretsManager.ts'
 
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
+const resendApiKey = getSecret('RESEND_API_KEY')
+const resend = resendApiKey
+  ? new Resend(resendApiKey)
   : null
 const fromEmail = 'Lali <onboarding@better-call-saul.ai>'
 
 export const auth = betterAuth({
-  secret: process.env.BETTER_AUTH_SECRET,
+  secret: getSecret('BETTER_AUTH_SECRET', ''),
   database: drizzleAdapter(db, {
     provider: 'sqlite',
   }),
-  baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+  baseURL: getSecret('BETTER_AUTH_URL', 'http://localhost:3000'),
   trustedOrigins: [
     'http://127.0.0.1:3000',
     'http://localhost:3000',
@@ -62,7 +64,7 @@ export const auth = betterAuth({
     },
   },
   advanced: {
-    useSecureCookies: process.env.NODE_ENV === 'production',
+    useSecureCookies: getSecret('NODE_ENV') === 'production',
     defaultCookieAttributes: {
       sameSite: 'lax',
     },

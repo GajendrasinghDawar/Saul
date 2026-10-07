@@ -110,6 +110,7 @@ function LoginPage() {
           Don't have an account?{' '}
           <Link
             to='/signup'
+            search={(prev) => prev}
             className='text-crimson11 hover:text-crimson10 hover:underline'
           >
             Sign up
