@@ -37,8 +37,17 @@ When deploying Saul for self-hosting (especially via Docker and Caddy), there ar
 **The Cause**: The user's browser had a URL cached like `/chat/1` from local testing. When pointing to the production server (which had a completely empty SQLite database), the frontend sent `conversationId: 1`. The backend couldn't find conversation `1`, causing it to correctly return a 404.
 **The Fix**: Hard refresh the UI and navigate to the root `/` to force the backend to initialize a fresh conversation.
 
+## 8. State Inconsistency & Silent Data Loss (404 Conversation Not Found)
+**The Problem**: The `/api/chat` endpoint returned `404 Not Found` for existing chat sessions after a deployment or server restart, despite the user seeing their chat history in the sidebar.
+**The Cause**: The backend relies on two distinct databases:
+1. `local-turso.db`: Stores metadata (users, auth, `user_conversations` links).
+2. `lali-durable.sqlite`: The Pi-Durable engine's internal state machine database (stores actual conversational memory and tasks).
+In the Docker setup, `local-turso.db` was correctly placed inside the persistent volume (`/app/data/`), but `lali-durable.sqlite` was initialized in the app root (`/app/`). Whenever the Docker container rebuilt, the durable state was wiped, while the Turso DB survived. This resulted in orphaned `user_conversations` pointing to Pi-Durable sessions that no longer existed.
+**The Fix**: Explicitly override the `storage` configuration in `src/setup/durable.ts` to point to the mounted volume (`./data/lali-durable.sqlite`).
+
 ## Hardening Recommendations for Self-Hosters
 To prevent users from experiencing these when self-hosting Saul:
 1. **Mandatory Domain**: Require users to provide a `DOMAIN` in `.env`. Do not officially support raw IP hosting in production, as it breaks Web Crypto and Secure Cookies.
 2. **Schema Auto-Push**: Ensure the Docker startup script runs `npx drizzle-kit push` before starting the Node server so the SQLite database schema is always up-to-date.
 3. **Graceful Error Handling**: Add a global Express error handler `(err, req, res, next)` to catch middleware crashes (like the rate-limiter one) and return clean JSON instead of crashing or returning HTML.
+4. **Volume Mapping Checks**: Validate on startup that all SQLite database files (`local-turso.db` and `lali-durable.sqlite`) are physically located inside a directory that is mounted as a persistent volume (e.g., `/app/data`).
