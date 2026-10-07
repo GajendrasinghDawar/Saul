@@ -38,7 +38,7 @@ const csrfConfig = doubleCsrf({
   cookieName: 'x-csrf-token',
   cookieOptions: {
     sameSite: 'lax' as const,
-    secure: getSecret('NODE_ENV') === 'production',
+    secure: false, // Disabled because we are testing over HTTP IP
   },
 })
 
