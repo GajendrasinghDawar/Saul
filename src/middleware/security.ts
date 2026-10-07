@@ -8,8 +8,6 @@ import { getSecret } from '../secretsManager.ts'
 
 export const securityMiddleware = [
   helmet({
-    crossOriginOpenerPolicy: false,
-    originAgentCluster: false,
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
@@ -38,7 +36,7 @@ const csrfConfig = doubleCsrf({
   cookieName: 'x-csrf-token',
   cookieOptions: {
     sameSite: 'lax' as const,
-    secure: false, // Disabled because we are testing over HTTP IP
+    secure: getSecret('NODE_ENV') === 'production',
   },
 })
 

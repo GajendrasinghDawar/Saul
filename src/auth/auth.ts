@@ -64,7 +64,7 @@ export const auth = betterAuth({
     },
   },
   advanced: {
-    useSecureCookies: false, // Disabled because we are testing over HTTP IP
+    useSecureCookies: getSecret('NODE_ENV') === 'production',
     defaultCookieAttributes: {
       sameSite: 'lax',
     },

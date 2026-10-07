@@ -21,7 +21,7 @@ services:
       - "443:443"
     # We use an environment variable so you can easily change the domain in your .env file
     # If DOMAIN is not set in .env, it falls back to localhost for local testing.
-    command: caddy reverse-proxy --from http://${DOMAIN:-localhost} --to http://saul-api:3000
+    command: caddy reverse-proxy --from ${DOMAIN:-localhost} --to http://saul-api:3000
     env_file:
       - .env
     volumes:
