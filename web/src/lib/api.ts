@@ -9,7 +9,7 @@ export async function initCsrfToken(): Promise<void> {
 
 export async function getCsrfToken(): Promise<string> {
   if (!cachedCsrfToken) await initCsrfToken()
-  return cachedCsrfToken!
+  return cachedCsrfToken as string
 }
 
 export async function fetchWithCsrf(url: string, options: RequestInit = {}) {

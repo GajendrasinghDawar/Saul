@@ -1,6 +1,6 @@
 import dotenv from 'dotenv'
-import { setupDurableHarness } from './setup/durable.ts'
 import { loadSecrets } from './secretsManager.ts'
+import { setupDurableHarness } from './setup/durable.ts'
 
 dotenv.config({ override: true })
 

@@ -14,7 +14,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </SidebarInset>
-      <Toaster position="top-center" />
+      <Toaster position='top-center' />
     </SidebarProvider>
   )
 }

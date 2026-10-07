@@ -1,5 +1,4 @@
 import { useNavigate } from '@tanstack/react-router'
-import { toast } from 'sonner'
 import {
   type ChangeEvent,
   type FormEvent,
@@ -7,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { toast } from 'sonner'
 import { uploadFile } from '../../lib/api'
 import { Composer, type StagedFile } from './Composer'
 import { MessageTimeline } from './MessageTimeline'

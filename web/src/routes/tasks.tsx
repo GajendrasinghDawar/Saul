@@ -9,7 +9,10 @@ type Task = {
   id: string
   name: string
   status: string
-  state: any
+  state: {
+    checkpoint?: unknown
+    [key: string]: unknown
+  } | null
 }
 
 function TasksPage() {
@@ -86,6 +89,7 @@ function TasksPage() {
                     </span>
                     {task.status === 'running' && (
                       <button
+                        type='button'
                         onClick={async () => {
                           try {
                             await fetchWithCsrf(`/api/tasks/${task.id}/abort`, {

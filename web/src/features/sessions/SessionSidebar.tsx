@@ -103,7 +103,7 @@ export function SessionSidebar() {
   const handleRename = async () => {
     if (!renameSessionObj) return
     const currentTitle = renameSessionObj.title || `Chat ${renameSessionObj.id}`
-    if (newTitle && newTitle.trim() && newTitle !== currentTitle) {
+    if (newTitle?.trim() && newTitle !== currentTitle) {
       setIsSubmitting(true)
       try {
         await renameSession(renameSessionObj.id, newTitle.trim())

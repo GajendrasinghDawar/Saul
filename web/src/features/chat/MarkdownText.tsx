@@ -3,7 +3,13 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-function CodeBlock({ node, inline, className, children, ...props }: any) {
+function CodeBlock({
+  node,
+  inline,
+  className,
+  children,
+  ...props
+}: Record<string, unknown>) {
   const [copied, setCopied] = useState(false)
 
   const match = /language-(\w+)/.exec(className || '')
@@ -32,6 +38,7 @@ function CodeBlock({ node, inline, className, children, ...props }: any) {
       <div className='flex items-center justify-between bg-slate3 px-3 py-1.5 text-xs font-sans text-slate10 border-b border-slate6'>
         <span className='uppercase tracking-wider'>{lang || 'text'}</span>
         <button
+          type='button'
           onClick={copy}
           className='flex items-center gap-1.5 text-slate9 hover:text-slate12 transition-colors'
           aria-label='Copy code'

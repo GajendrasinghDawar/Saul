@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { GitBranch, Hash, MessageCircle, Send } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export const Route = createFileRoute('/chat/thread/$threadId')({
   component: ChatTab,
@@ -11,20 +12,22 @@ function ChatTab() {
   const navigate = useNavigate({ from: Route.fullPath })
   const activeThreadId = Number(threadId)
 
+  // biome-ignore lint/suspicious/noExplicitAny: complex dynamic view structure
   const [view, setView] = useState<any>(null)
+  // biome-ignore lint/suspicious/noExplicitAny: flexible threads
   const [threads, setThreads] = useState<any[]>([])
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Fetch threads on load
-  const fetchThreads = async () => {
+  const fetchThreads = useCallback(async () => {
     try {
       const res = await fetch('/api/conversations')
       const data = await res.json()
       setThreads(data.conversations || [])
     } catch (_e) {}
-  }
+  }, [])
 
   useEffect(() => {
     fetchThreads()
@@ -51,15 +54,15 @@ function ChatTab() {
   const isThinking = !!view?.docs?.['pi.live']?.generation
   const streamingText =
     view?.docs?.['pi.live']?.generation?.message?.content
-      ?.filter((c: any) => c.type === 'text')
-      ?.map((c: any) => c.text)
+      ?.filter((c: { type: string; text?: string }) => c.type === 'text')
+      ?.map((c: { type: string; text?: string }) => c.text)
       ?.join('') || ''
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
-  const sendMessage = async (e: any) => {
+  const sendMessage = async (e: FormEvent) => {
     e.preventDefault()
     if (!message.trim()) return
 
@@ -126,6 +129,7 @@ function ChatTab() {
             <GitBranch className='w-4 h-4 text-indigo-600' /> Timelines
           </h2>
           <button
+            type='button'
             onClick={startNewThread}
             className='text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 rounded shadow-sm flex items-center gap-1'
           >
@@ -136,6 +140,7 @@ function ChatTab() {
           {threads.map(thread => (
             <li key={thread.id}>
               <button
+                type='button'
                 onClick={() =>
                   navigate({
                     to: '/chat/thread/$threadId',
@@ -172,66 +177,82 @@ function ChatTab() {
         </div>
 
         <div className='flex-1 p-6 overflow-y-auto bg-white space-y-6'>
-          {transcript.map((entry: any) => {
-            if (entry.kind === 'pi.user') {
-              return (
-                <div key={entry.id} className='flex flex-col items-end group'>
-                  <div className='bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%]'>
-                    {entry.model?.[0]?.content}
+          {transcript.map(
+            (entry: {
+              kind: string
+              id: string
+              message?: string
+              user?: { id: string }
+              model?: { content?: { type: string; text?: string }[] }[]
+            }) => {
+              if (entry.kind === 'pi.user') {
+                return (
+                  <div key={entry.id} className='flex flex-col items-end group'>
+                    <div className='bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%]'>
+                      {entry.model?.[0]?.content}
+                    </div>
+                    <button
+                      type='button'
+                      onClick={() => forkConversation(entry.id)}
+                      className='text-xs text-gray-400 hover:text-indigo-600 mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity'
+                    >
+                      <GitBranch className='w-3 h-3' /> Fork here
+                    </button>
                   </div>
-                  <button
-                    onClick={() => forkConversation(entry.id)}
-                    className='text-xs text-gray-400 hover:text-indigo-600 mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity'
+                )
+              }
+              if (entry.kind === 'pi.assistant') {
+                const textContent =
+                  entry.model?.[0]?.content
+                    ?.filter(
+                      (c: { type: string; text?: string }) => c.type === 'text'
+                    )
+                    ?.map((c: { type: string; text?: string }) => c.text)
+                    ?.join('') || ''
+                const hasTools = entry.model?.[0]?.content?.some(
+                  (c: { type: string }) => c.type === 'toolCall'
+                )
+                return (
+                  <div
+                    key={entry.id}
+                    className='flex flex-col items-start group'
                   >
-                    <GitBranch className='w-3 h-3' /> Fork here
-                  </button>
-                </div>
-              )
-            }
-            if (entry.kind === 'pi.assistant') {
-              const textContent =
-                entry.model?.[0]?.content
-                  ?.filter((c: any) => c.type === 'text')
-                  ?.map((c: any) => c.text)
-                  ?.join('') || ''
-              const hasTools = entry.model?.[0]?.content?.some(
-                (c: any) => c.type === 'toolCall'
-              )
-              return (
-                <div key={entry.id} className='flex flex-col items-start group'>
-                  <div className='bg-gray-100 text-gray-900 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]'>
-                    {textContent && (
-                      <p className='whitespace-pre-wrap'>{textContent}</p>
-                    )}
-                    {hasTools && (
-                      <span className='text-xs font-mono text-purple-600 mt-1 block'>
-                        [Used a tool]
-                      </span>
-                    )}
+                    <div className='bg-gray-100 text-gray-900 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]'>
+                      {textContent && (
+                        <p className='whitespace-pre-wrap'>{textContent}</p>
+                      )}
+                      {hasTools && (
+                        <span className='text-xs font-mono text-purple-600 mt-1 block'>
+                          [Used a tool]
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type='button'
+                      onClick={() => forkConversation(entry.id)}
+                      className='text-xs text-gray-400 hover:text-indigo-600 mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity'
+                    >
+                      <GitBranch className='w-3 h-3' /> Fork here
+                    </button>
                   </div>
-                  <button
-                    onClick={() => forkConversation(entry.id)}
-                    className='text-xs text-gray-400 hover:text-indigo-600 mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity'
+                )
+              }
+              if (entry.kind === 'pi.tool-result') {
+                return (
+                  <div
+                    key={entry.id}
+                    className='flex flex-col items-start pl-8 my-2'
                   >
-                    <GitBranch className='w-3 h-3' /> Fork here
-                  </button>
-                </div>
-              )
-            }
-            if (entry.kind === 'pi.tool-result') {
-              return (
-                <div
-                  key={entry.id}
-                  className='flex flex-col items-start pl-8 my-2'
-                >
-                  <div className='bg-purple-50 border border-purple-100 text-purple-800 rounded-lg px-3 py-2 text-xs font-mono max-w-[80%]'>
-                    {entry.model?.[0]?.content?.[0]?.text || 'Tool completed.'}
+                    <div className='bg-purple-50 border border-purple-100 text-purple-800 rounded-lg px-3 py-2 text-xs font-mono max-w-[80%]'>
+                      {entry.model?.[0]?.content?.[0]?.text ||
+                        'Tool completed.'}
+                    </div>
                   </div>
-                </div>
-              )
+                )
+              }
+              return null
             }
-            return null
-          })}
+          )}
 
           {isThinking && (
             <div className='flex flex-col items-start'>

@@ -5,9 +5,7 @@ import { db } from '../db/index.ts'
 import { getSecret } from '../secretsManager.ts'
 
 const resendApiKey = getSecret('RESEND_API_KEY')
-const resend = resendApiKey
-  ? new Resend(resendApiKey)
-  : null
+const resend = resendApiKey ? new Resend(resendApiKey) : null
 const fromEmail = 'onboarding@resend.dev'
 
 export const auth = betterAuth({
@@ -16,6 +14,15 @@ export const auth = betterAuth({
     provider: 'sqlite',
   }),
   baseURL: getSecret('BETTER_AUTH_URL', 'http://localhost:3000'),
+  user: {
+    additionalFields: {
+      role: {
+        type: 'string',
+        required: false,
+        defaultValue: 'user',
+      },
+    },
+  },
   trustedOrigins: [
     'http://127.0.0.1:3000',
     'http://localhost:3000',

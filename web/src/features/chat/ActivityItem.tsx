@@ -35,6 +35,7 @@ export function ActivityItem({
       </CollapsibleTrigger>
       <CollapsibleContent className='ml-2 mt-2 space-y-1 border-l border-slate5 pl-5 text-xs text-slate9'>
         {activities.map((activity, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: order is fixed
           <div key={`${index}-${activity}`}>{activity}</div>
         ))}
       </CollapsibleContent>

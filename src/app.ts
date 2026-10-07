@@ -11,8 +11,8 @@ import {
 } from './middleware/security.ts'
 import { createChatRouter } from './routes/chat.ts'
 import { createConversationsRouter } from './routes/conversations.ts'
-import { createTasksRouter } from './routes/tasks.ts'
 import { secretsRouter } from './routes/secrets.ts'
+import { createTasksRouter } from './routes/tasks.ts'
 
 export type AppDependencies = {
   harness: Harness
@@ -23,8 +23,10 @@ export type AppDependencies = {
   }
 }
 
-import path from 'path'
-import { fileURLToPath } from 'url'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { db } from './db/index.ts'
+import { user } from './db/schema.ts'
 
 export function createApp(dependencies: AppDependencies) {
   const { auth } = dependencies
@@ -33,6 +35,31 @@ export function createApp(dependencies: AppDependencies) {
 
   // Security middleware
   app.use(securityMiddleware)
+
+  // First User / Admin-only setup lock
+  app.use('/api/auth/sign-up/email', async (req, res, next) => {
+    try {
+      const existingUsers = await db.select().from(user).limit(1)
+      if (existingUsers.length === 0) {
+        // Automatically make the first user an admin
+        if (req.body) req.body.role = 'admin'
+        return next() // Allowed: this is the very first user being created
+      }
+
+      // If users exist, only allow if the requester has an active admin session
+      const session = await auth.api.getSession({
+        headers: new Headers(req.headers as Record<string, string>),
+      })
+      if (session?.user.role !== 'admin') {
+        return res.status(403).json({
+          error: 'Setup complete. Only administrators can register new users.',
+        })
+      }
+      next()
+    } catch (error) {
+      next(error)
+    }
+  })
 
   // Better Auth handler - must be before CSRF
   app.use('/api/auth', toNodeHandler(auth))
@@ -61,9 +88,9 @@ export function createApp(dependencies: AppDependencies) {
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = path.dirname(__filename)
   const publicPath = path.join(__dirname, '../web/dist')
-  
+
   app.use(express.static(publicPath))
-  app.use((req, res, next) => {
+  app.use((req, res, _next) => {
     if (!req.path.startsWith('/api')) {
       res.sendFile(path.join(publicPath, 'index.html'))
     } else {

@@ -71,6 +71,7 @@ export function SidebarProvider({
       const nextOpen = typeof value === 'function' ? value(open) : value
       if (onOpenChange) onOpenChange(nextOpen)
       else setInternalOpen(nextOpen)
+      // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API isn't supported in all browsers
       document.cookie = `${SIDEBAR_COOKIE_NAME}=${nextOpen}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
     },
     [onOpenChange, open]

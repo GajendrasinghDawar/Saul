@@ -26,10 +26,11 @@ function LoginPage() {
       if (!response.ok) {
         throw new Error(data.message || 'Invalid email or password')
       }
-      
+
       const searchParams = new URLSearchParams(window.location.search)
       if (searchParams.get('client') === 'android') {
-        const token = data.token || data.session?.token || data.session?.id || ''
+        const token =
+          data.token || data.session?.token || data.session?.id || ''
         window.location.href = `saul://auth?token=${token}`
         return
       }
@@ -110,7 +111,7 @@ function LoginPage() {
           Don't have an account?{' '}
           <Link
             to='/signup'
-            search={(prev) => prev}
+            search={prev => prev}
             className='text-crimson11 hover:text-crimson10 hover:underline'
           >
             Sign up

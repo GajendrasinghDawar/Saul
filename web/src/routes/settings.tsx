@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Trash, Plus, Save, Key } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { Key, Plus, Save, Trash } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 
 export const Route = createFileRoute('/settings')({ component: SettingsPage })
 
@@ -18,8 +18,8 @@ function SettingsPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [newSecret, setNewSecret] = useState<Partial<Secret>>({ kind: 'env' })
   const [error, setError] = useState<string | null>(null)
-  
-  const fetchSecrets = async () => {
+
+  const fetchSecrets = useCallback(async () => {
     try {
       const res = await fetch('/api/secrets')
       if (res.ok) {
@@ -31,11 +31,11 @@ function SettingsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchSecrets()
-  }, [])
+  }, [fetchSecrets])
 
   const handleDelete = async (name: string) => {
     if (!confirm(`Are you sure you want to delete ${name}?`)) return
@@ -54,7 +54,7 @@ function SettingsPage() {
       const res = await fetch('/api/secrets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSecret)
+        body: JSON.stringify(newSecret),
       })
       if (res.ok) {
         setShowAddForm(false)
@@ -64,7 +64,7 @@ function SettingsPage() {
         const data = await res.json()
         setError(data.error || 'Failed to save')
       }
-    } catch (e) {
+    } catch (_e) {
       setError('Network error')
     }
   }
@@ -76,7 +76,9 @@ function SettingsPage() {
           <Key size={20} />
         </div>
         <div>
-          <h2 className='text-xl font-semibold text-slate12'>Environment & Secrets</h2>
+          <h2 className='text-xl font-semibold text-slate12'>
+            Environment & Secrets
+          </h2>
           <p className='text-sm text-slate10'>
             Manage application settings, API keys, and environment variables.
           </p>
@@ -85,7 +87,8 @@ function SettingsPage() {
 
       <div className='flex justify-between items-center'>
         <h3 className='text-lg font-medium text-slate12'>Configuration</h3>
-        <button 
+        <button
+          type='button'
           onClick={() => setShowAddForm(true)}
           className='flex items-center gap-2 bg-slate12 text-slate1 px-3 py-1.5 rounded-md text-sm hover:bg-slate11 transition-colors'
         >
@@ -94,45 +97,71 @@ function SettingsPage() {
       </div>
 
       {showAddForm && (
-        <form onSubmit={handleSave} className='bg-slate2 p-4 rounded-lg border border-slate5 flex flex-col gap-4'>
+        <form
+          onSubmit={handleSave}
+          className='bg-slate2 p-4 rounded-lg border border-slate5 flex flex-col gap-4'
+        >
           <div className='grid grid-cols-2 gap-4'>
             <div>
-              <label className='block text-xs font-medium text-slate11 mb-1'>Name (e.g. OPENAI_API_KEY)</label>
-              <input 
+              <label
+                htmlFor='secret-name'
+                className='block text-xs font-medium text-slate11 mb-1'
+              >
+                Name (e.g. OPENAI_API_KEY)
+              </label>
+              <input
+                id='secret-name'
                 required
                 className='w-full bg-slate1 border border-slate6 rounded px-3 py-2 text-sm text-slate12'
                 value={newSecret.name || ''}
-                onChange={e => setNewSecret({...newSecret, name: e.target.value.toUpperCase()})}
+                onChange={e =>
+                  setNewSecret({
+                    ...newSecret,
+                    name: e.target.value.toUpperCase(),
+                  })
+                }
               />
             </div>
             <div>
-              <label className='block text-xs font-medium text-slate11 mb-1'>Value</label>
-              <input 
+              <label
+                htmlFor='secret-value'
+                className='block text-xs font-medium text-slate11 mb-1'
+              >
+                Value
+              </label>
+              <input
+                id='secret-value'
                 required
                 type={newSecret.kind === 'secret' ? 'password' : 'text'}
                 className='w-full bg-slate1 border border-slate6 rounded px-3 py-2 text-sm text-slate12'
                 value={newSecret.value || ''}
-                onChange={e => setNewSecret({...newSecret, value: e.target.value})}
+                onChange={e =>
+                  setNewSecret({ ...newSecret, value: e.target.value })
+                }
               />
             </div>
           </div>
-          
+
           <div>
-            <label className='block text-xs font-medium text-slate11 mb-2'>Type</label>
+            <span className='block text-xs font-medium text-slate11 mb-2'>
+              Type
+            </span>
             <div className='flex gap-4'>
               <label className='flex items-center gap-2 text-sm text-slate12'>
-                <input 
-                  type='radio' 
+                <input
+                  type='radio'
                   checked={newSecret.kind === 'env'}
-                  onChange={() => setNewSecret({...newSecret, kind: 'env'})}
+                  onChange={() => setNewSecret({ ...newSecret, kind: 'env' })}
                 />
                 Agent Readable (Environment)
               </label>
               <label className='flex items-center gap-2 text-sm text-slate12'>
-                <input 
-                  type='radio' 
+                <input
+                  type='radio'
                   checked={newSecret.kind === 'secret'}
-                  onChange={() => setNewSecret({...newSecret, kind: 'secret'})}
+                  onChange={() =>
+                    setNewSecret({ ...newSecret, kind: 'secret' })
+                  }
                 />
                 Protected Secret (API Keys)
               </label>
@@ -142,14 +171,14 @@ function SettingsPage() {
           {error && <div className='text-red-500 text-sm'>{error}</div>}
 
           <div className='flex justify-end gap-2 mt-2'>
-            <button 
-              type='button' 
+            <button
+              type='button'
               onClick={() => setShowAddForm(false)}
               className='px-3 py-1.5 text-sm text-slate11 hover:text-slate12'
             >
               Cancel
             </button>
-            <button 
+            <button
               type='submit'
               className='flex items-center gap-2 bg-slate12 text-slate1 px-3 py-1.5 rounded-md text-sm'
             >
@@ -171,15 +200,25 @@ function SettingsPage() {
           </thead>
           <tbody className='divide-y divide-slate5'>
             {loading ? (
-              <tr><td colSpan={4} className='px-4 py-4 text-center text-slate10'>Loading...</td></tr>
+              <tr>
+                <td colSpan={4} className='px-4 py-4 text-center text-slate10'>
+                  Loading...
+                </td>
+              </tr>
             ) : secrets.length === 0 ? (
-              <tr><td colSpan={4} className='px-4 py-8 text-center text-slate10'>No configuration found.</td></tr>
+              <tr>
+                <td colSpan={4} className='px-4 py-8 text-center text-slate10'>
+                  No configuration found.
+                </td>
+              </tr>
             ) : (
               secrets.map(s => (
                 <tr key={s.name} className='hover:bg-slate3/50'>
                   <td className='px-4 py-3 font-mono text-slate12'>{s.name}</td>
                   <td className='px-4 py-3'>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${s.kind === 'secret' ? 'bg-orange-500/10 text-orange-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${s.kind === 'secret' ? 'bg-orange-500/10 text-orange-500' : 'bg-blue-500/10 text-blue-500'}`}
+                    >
                       {s.kind === 'secret' ? 'Protected' : 'Readable'}
                     </span>
                   </td>
@@ -187,7 +226,8 @@ function SettingsPage() {
                     {s.value}
                   </td>
                   <td className='px-4 py-3 text-right'>
-                    <button 
+                    <button
+                      type='button'
                       onClick={() => handleDelete(s.name)}
                       className='text-slate10 hover:text-red-500 transition-colors'
                       title='Delete'

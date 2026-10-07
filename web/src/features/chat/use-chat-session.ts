@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchWithCsrf } from '../../lib/api'
 import { toast } from 'sonner'
+import { fetchWithCsrf } from '../../lib/api'
 
 export type Message = {
   role: 'user' | 'assistant'
@@ -50,6 +50,7 @@ export function useChatSession(sessionId: string) {
     pendingMessagesRef.current.clear()
 
     // Map pi-durable entries (which are Git-like commit nodes) to our UI Message format
+    // biome-ignore lint/suspicious/noExplicitAny: complex structure
     const processView = (view: any) => {
       const msgs: Message[] = []
       let currentAssistantMsg: Message | null = null
@@ -130,7 +131,10 @@ export function useChatSession(sessionId: string) {
             const res = entry.model[0]
             let text = ''
             if (Array.isArray(res.content))
-              text = res.content.find((c: any) => c.type === 'text')?.text || ''
+              text =
+                res.content.find(
+                  (c: { type: string; text?: string }) => c.type === 'text'
+                )?.text || ''
             else text = res.content
 
             // We use a convention where the pi-durable backend can return
@@ -210,9 +214,10 @@ export function useChatSession(sessionId: string) {
     )
       return
 
-    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID 
-      ? crypto.randomUUID() 
-      : Date.now().toString(36) + Math.random().toString(36).substring(2)
+    const idempotencyKey =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Date.now().toString(36) + Math.random().toString(36).substring(2)
     const pendingMsg: Message = {
       role: 'user',
       content: text,
@@ -243,7 +248,7 @@ export function useChatSession(sessionId: string) {
       // avoiding any UI flicker.
     } catch (e) {
       console.error('Failed to send message', e)
-      
+
       // Improve UX: show a toast when a message fails to send (like a 404)
       if (e instanceof Error && e.message.includes('404')) {
         toast.error('Conversation not found. It may have been deleted.')

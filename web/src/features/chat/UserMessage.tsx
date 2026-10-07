@@ -21,6 +21,7 @@ export function UserMessage({
         {content}
         {onFork && (
           <button
+            type='button'
             onClick={onFork}
             title='Fork conversation from here'
             className='absolute -left-10 top-2 p-1.5 opacity-0 transition-opacity group-hover/message:opacity-100 hover:bg-slate3 hover:text-slate11 rounded-md text-slate9'

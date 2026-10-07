@@ -23,7 +23,9 @@ export function createChatController({
 
       let targetConvId = conversationId as ConversationId | undefined
       if (!targetConvId) {
-        console.log('[DEBUG] No targetConvId, calling getOrCreateMainConversationId')
+        console.log(
+          '[DEBUG] No targetConvId, calling getOrCreateMainConversationId'
+        )
         targetConvId = await chatService.getOrCreateMainConversationId(userId)
       } else {
         console.log('[DEBUG] Validating existing targetConvId:', targetConvId)
@@ -36,13 +38,16 @@ export function createChatController({
         }
       }
 
-      console.log('[DEBUG] Submitting to chatService, targetConvId:', targetConvId)
+      console.log(
+        '[DEBUG] Submitting to chatService, targetConvId:',
+        targetConvId
+      )
       const settled = await chatService.submitMessage(
         targetConvId,
         message,
         whenBusy
       )
-      
+
       console.log('[DEBUG] chatService.submitMessage returned:', settled)
       if (!settled) {
         console.log('[DEBUG] Returning 404 because settled is null/false')

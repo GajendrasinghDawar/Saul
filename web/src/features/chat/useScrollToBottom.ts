@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export function useScrollToBottom<T extends HTMLElement>(
   dependencies: readonly unknown[],
@@ -8,13 +8,13 @@ export function useScrollToBottom<T extends HTMLElement>(
   const [isAtBottom, setIsAtBottom] = useState(true)
 
   // Check if we are at bottom
-  const checkScroll = () => {
+  const checkScroll = useCallback(() => {
     if (!containerRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current
     // 50px threshold
     const atBottom = scrollHeight - scrollTop - clientHeight < 50
     setIsAtBottom(atBottom)
-  }
+  }, [])
 
   // Scroll to bottom manually
   const scrollToBottom = () => {
