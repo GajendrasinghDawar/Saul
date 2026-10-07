@@ -15,6 +15,7 @@ export const securityMiddleware = [
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'https:'],
         connectSrc: ["'self'"],
+        upgradeInsecureRequests: null,
       },
     },
   }),
