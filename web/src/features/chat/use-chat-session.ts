@@ -290,6 +290,7 @@ export function useChatSession(sessionId: string) {
       })
       if (!res.ok) throw new Error('Failed to fork conversation')
       const data = await res.json()
+      window.dispatchEvent(new CustomEvent('chat-updated'))
       return data.newConversationId
     } catch (e) {
       console.error('Fork failed', e)
