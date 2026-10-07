@@ -179,7 +179,7 @@ function SettingsPage() {
                 <tr key={s.name} className='hover:bg-slate3/50'>
                   <td className='px-4 py-3 font-mono text-slate12'>{s.name}</td>
                   <td className='px-4 py-3'>
-                    <span className={\`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium \${s.kind === 'secret' ? 'bg-orange-500/10 text-orange-500' : 'bg-blue-500/10 text-blue-500'}\`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${s.kind === 'secret' ? 'bg-orange-500/10 text-orange-500' : 'bg-blue-500/10 text-blue-500'}`}>
                       {s.kind === 'secret' ? 'Protected' : 'Readable'}
                     </span>
                   </td>
