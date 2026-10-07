@@ -173,9 +173,10 @@ function extractEntryText(
   if (Array.isArray(content)) {
     return content
       .filter(
-        (c: { type?: string; text?: string }) => c.type === 'text' && c.text
+        (c: { type?: string; text?: string; thinking?: string }) =>
+          (c.type === 'text' && c.text) || (c.type === 'thinking' && c.thinking)
       )
-      .map((c: { text?: string }) => c.text)
+      .map((c: { text?: string; thinking?: string }) => c.text || c.thinking)
       .join('')
   }
   return ''

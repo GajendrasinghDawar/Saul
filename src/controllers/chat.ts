@@ -104,26 +104,29 @@ export function createChatController({
       }
 
       res.setHeader('Content-Type', 'text/event-stream')
-      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('Cache-Control', 'no-cache, no-transform')
       res.setHeader('Connection', 'keep-alive')
+      res.setHeader('X-Accel-Buffering', 'no')
       res.flushHeaders()
+
+      const writeEvent = (event: unknown) => {
+        res.write(`data: ${JSON.stringify(event)}\n\n`)
+        const flush = Reflect.get(res, 'flush')
+        if (typeof flush === 'function') Reflect.apply(flush, res, [])
+      }
 
       const conv = await chatService.getConversationStream(targetConvId)
       if (!conv) {
-        res.write(`data: ${JSON.stringify({ error: 'Not found' })}\n\n`)
+        writeEvent({ error: 'Not found' })
         res.end()
         return
       }
 
       const view = await conv.viewState(BACKGROUND_CONTEXT)
-      res.write(
-        `data: ${JSON.stringify({ type: 'init', view: view.value })}\n\n`
-      )
+      writeEvent({ type: 'init', view: view.value })
 
       const unsubscribe = view.subscribe(value => {
-        res.write(
-          `data: ${JSON.stringify({ type: 'update', view: value })}\n\n`
-        )
+        writeEvent({ type: 'update', view: value })
       })
 
       req.on('close', () => {
