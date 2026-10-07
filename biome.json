@@ -7,8 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
-    "ignore": ["web/src/routeTree.gen.ts"]
+    "includes": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
   },
   "formatter": {
     "enabled": true,
