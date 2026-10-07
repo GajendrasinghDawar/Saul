@@ -31,7 +31,18 @@ export class ChatService {
       .limit(1)
 
     if (records.length > 0) {
-      return Number(records[0].conversationId) as ConversationId
+      const cid = Number(records[0].conversationId) as ConversationId
+
+      // Verify it exists in pi-durable
+      const conv = await this.harness.conversation(cid, BACKGROUND_CONTEXT)
+      if (conv) {
+        return cid
+      }
+
+      // Dangling reference (e.g. pi-durable db was reset) - clean it up
+      await db
+        .delete(userConversations)
+        .where(eq(userConversations.userId, userId))
     }
 
     return await this.createConversation(userId)

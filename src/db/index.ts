@@ -9,7 +9,7 @@ dotenv.config({ override: true })
 // By providing TURSO_SYNC_URL, we enable embedded replicas: blazing fast local reads
 // that automatically backup/sync to your Turso Cloud database.
 const client = createClient({
-  url: process.env.TURSO_DATABASE_URL || 'file:local-turso.db',
+  url: process.env.TURSO_DATABASE_URL || 'file:./data/local-turso.db',
   authToken: process.env.TURSO_AUTH_TOKEN,
   syncUrl: process.env.TURSO_SYNC_URL,
 })
