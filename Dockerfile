@@ -2,6 +2,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# Install native dependencies for SQLite compilation
+RUN apk add --no-cache python3 make g++ 
+
 # Copy root package files
 COPY package.json package-lock.json ./
 # Copy frontend package files
