@@ -29,6 +29,7 @@ import { fileURLToPath } from 'url'
 export function createApp(dependencies: AppDependencies) {
   const { auth } = dependencies
   const app = express()
+  app.set('trust proxy', 1) // Trust Caddy reverse proxy for rate limiting and IPs
 
   // Security middleware
   app.use(securityMiddleware)
