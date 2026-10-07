@@ -1,4 +1,5 @@
 import { Outlet } from '@tanstack/react-router'
+import { Toaster } from 'sonner'
 import { SidebarInset, SidebarProvider } from '../components/ui/sidebar'
 import { ChatHeader } from '../features/chat/ChatHeader'
 import { SessionSidebar } from '../features/sessions/SessionSidebar'
@@ -13,6 +14,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </SidebarInset>
+      <Toaster position="top-center" />
     </SidebarProvider>
   )
 }

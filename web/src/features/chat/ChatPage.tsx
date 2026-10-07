@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import {
   type ChangeEvent,
   type FormEvent,
@@ -87,7 +88,7 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
       const newConvId = await forkMessage(messageId)
       void navigate({ to: `/chat/${newConvId}` })
     } catch (_e) {
-      alert('Failed to fork conversation.')
+      toast.error('Failed to fork conversation.')
     }
   }
 

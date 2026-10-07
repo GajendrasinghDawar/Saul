@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchWithCsrf } from '../../lib/api'
+import { toast } from 'sonner'
 
 export type Message = {
   role: 'user' | 'assistant'
@@ -235,13 +236,21 @@ export function useChatSession(sessionId: string) {
         }),
       })
 
-      if (!res.ok) throw new Error('Failed to send message')
+      if (!res.ok) throw new Error(`Failed to send message: ${res.status}`)
 
       // We no longer manually delete the pending message here!
       // The SSE stream (processView) will match the content and delete it when the server confirms it,
       // avoiding any UI flicker.
     } catch (e) {
       console.error('Failed to send message', e)
+      
+      // Improve UX: show a toast when a message fails to send (like a 404)
+      if (e instanceof Error && e.message.includes('404')) {
+        toast.error('Conversation not found. It may have been deleted.')
+      } else {
+        toast.error('Failed to send message. Please try again.')
+      }
+
       const m = pendingMessagesRef.current.get(idempotencyKey)
       if (m) {
         m.status = 'failed'
