@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Sparkles, Trash, Plus, Save, Key } from 'lucide-react'
+import { Trash, Plus, Save, Key } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 export const Route = createFileRoute('/settings')({ component: SettingsPage })

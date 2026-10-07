@@ -4,3 +4,4 @@
 - build test drive ui for saul. when anonymous users can see ui and work.
 
 - realtime multiplayer sync.
+- check security

@@ -348,7 +348,7 @@ export function SessionSidebar() {
           </div>
           <div className='flex justify-end gap-2'>
             <Button
-              variant='outline'
+              variant='secondary'
               onClick={() => setRenameSessionObj(null)}
               disabled={isSubmitting}
             >
@@ -376,7 +376,7 @@ export function SessionSidebar() {
           </DialogDescription>
           <div className='flex justify-end gap-2 mt-4'>
             <Button
-              variant='outline'
+              variant='secondary'
               onClick={() => setDeleteSessionObj(null)}
               disabled={isSubmitting}
             >

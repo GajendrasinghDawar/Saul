@@ -9,7 +9,7 @@ type Task = {
   id: string
   name: string
   status: string
-  state: unknown
+  state: any
 }
 
 function TasksPage() {
