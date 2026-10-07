@@ -74,6 +74,13 @@ export function SessionSidebar() {
 
   useEffect(() => {
     void loadSessions()
+    const handleChatUpdated = () => void loadSessions()
+    window.addEventListener('chat-updated', handleChatUpdated)
+    window.addEventListener('visibilitychange', handleChatUpdated)
+    return () => {
+      window.removeEventListener('chat-updated', handleChatUpdated)
+      window.removeEventListener('visibilitychange', handleChatUpdated)
+    }
   }, [loadSessions])
 
   const [renameSessionObj, setRenameSessionObj] = useState<SessionItem | null>(

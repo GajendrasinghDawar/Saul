@@ -161,6 +161,11 @@ export function useChatSession(sessionId: string) {
       // Check if the last assistant entry is complete (has a stopReason that isn't null).
       // This indicates the Pi Durable run loop has yielded and is no longer busy.
       const lastEntry = view.entries?.[view.entries.length - 1]
+      const isBusy =
+        (lastEntry?.kind === 'pi.assistant' ||
+          lastEntry?.kind === 'pi.tool-result') &&
+        !lastEntry?.model?.[0]?.stopReason
+
       if (
         lastEntry?.kind === 'pi.assistant' &&
         lastEntry.model?.[0]?.stopReason
@@ -173,6 +178,14 @@ export function useChatSession(sessionId: string) {
         lastEntry?.kind === 'pi.user'
       ) {
         setActiveRunId(lastRequestId)
+      }
+
+      // Dispatch event to sync sidebar when the stream transitions from busy to idle
+      if (!isBusy && window.sessionStorage.getItem(`busy-${sessionId}`)) {
+        window.sessionStorage.removeItem(`busy-${sessionId}`)
+        window.dispatchEvent(new CustomEvent('chat-updated'))
+      } else if (isBusy) {
+        window.sessionStorage.setItem(`busy-${sessionId}`, 'true')
       }
 
       // Overlay pending messages

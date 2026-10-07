@@ -80,6 +80,28 @@ export class ChatService {
     )
     if (!conv) return null
 
+    // Opportunistic Title Generation in a Pi-Durable Background Task
+    const records = await db
+      .select({ title: userConversations.title })
+      .from(userConversations)
+      .where(eq(userConversations.conversationId, String(conversationId)))
+      .limit(1)
+
+    if (records.length > 0 && !records[0].title) {
+      // Run as a background durable commit, deferring the execution
+      this.harness
+        .commit(async () => {
+          // Simple heuristic for title (can be upgraded to LLM call later)
+          const newTitle =
+            message.length > 30 ? `${message.substring(0, 30)}...` : message
+          await db
+            .update(userConversations)
+            .set({ title: newTitle })
+            .where(eq(userConversations.conversationId, String(conversationId)))
+        }, BACKGROUND_CONTEXT)
+        .catch(console.error)
+    }
+
     const submission = await conv.submit(
       { type: 'input', content: message, whenBusy },
       BACKGROUND_CONTEXT
