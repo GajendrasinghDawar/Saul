@@ -59,7 +59,7 @@ export function createApp(dependencies: AppDependencies) {
   // Serve static files in production
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = path.dirname(__filename)
-  const publicPath = path.join(__dirname, '../../web/dist')
+  const publicPath = path.join(__dirname, '../web/dist')
   
   app.use(express.static(publicPath))
   app.use((req, res, next) => {
