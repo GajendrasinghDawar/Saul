@@ -16,6 +16,35 @@ import org.junit.*
 
 class ChatScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun thinkingDisclosureToolsAndScrollableCode() {
+        val message = ChatMessage("12", MessageRole.Assistant, "A small example:\n\n```kotlin\nval result = notes.search(query = \"weekend plans and a very long example query\")\n```", thinking = "Search the notes before answering.", tools = listOf(
+            ToolActivity("a", "search", "{\"query\":\"weekend\"}", ToolStatus.Done),
+            ToolActivity("b", "read", "{\"path\":\"notes.md\"}", ToolStatus.Running),
+        ))
+        val state = mutableStateOf(ChatUiState(ConversationState(ChatProjection(listOf(message)), ConnectionStatus.Online)))
+        compose.setContent { LaliTheme {
+            AppShell(ShellDestination.Conversations, {}, {}, title = "Notes", connection = ConnectionStatus.Online) {
+                ChatScreen(state.value, onToggleThinking = { id -> state.value = state.value.copy(thinkingOverrides = mapOf(id to !state.value.thinkingExpanded(message))) })
+            }
+        } }
+        compose.onNodeWithText("Search the notes before answering.").assertDoesNotExist()
+        compose.onNodeWithText("Thinking").performClick()
+        compose.onNodeWithText("Search the notes before answering.").assertIsDisplayed()
+        compose.onNodeWithText("Done").assertExists()
+        compose.onNodeWithText("Running").assertExists()
+        capture("chat-thinking.png")
+        compose.onNodeWithText("Hide thinking").performClick()
+        compose.onNodeWithText("Search the notes before answering.").assertDoesNotExist()
+        compose.onNodeWithText("val result", substring = true).performTouchInput { swipeLeft() }
+        capture("chat-tools.png")
+    }
+
+    private fun capture(name: String) {
+        File(compose.activity.getExternalFilesDir(null), name).outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+    }
+
     @Test fun composerBlocksEmptyAndBusyAndAcceptsMultiline() {
         val state = mutableStateOf(ChatUiState(ConversationState(connection = ConnectionStatus.Online)))
         var sends = 0

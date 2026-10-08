@@ -1,6 +1,11 @@
 package io.github.gajendrasinghdawar.lali.core.markdown
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -16,6 +21,8 @@ import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import io.github.gajendrasinghdawar.lali.theme.Crimson11
+import io.github.gajendrasinghdawar.lali.theme.Slate3
+import io.github.gajendrasinghdawar.lali.theme.Slate6
 import org.commonmark.node.*
 import org.commonmark.parser.Parser
 
@@ -54,11 +61,19 @@ private fun MarkdownBlocks(parent: Node) {
             }
             is BlockQuote -> Column(Modifier.padding(start = 12.dp)) { MarkdownBlocks(current) }
             is ThematicBreak -> HorizontalDivider()
-            is FencedCodeBlock -> Text(current.literal, fontFamily = FontFamily.Monospace)
-            is IndentedCodeBlock -> Text(current.literal, fontFamily = FontFamily.Monospace)
+            is FencedCodeBlock -> CodeBlock(current.literal, current.info.orEmpty())
+            is IndentedCodeBlock -> CodeBlock(current.literal)
             else -> if (current.firstChild != null) MarkdownBlocks(current)
         }
         node = current.next
+    }
+}
+
+@Composable
+private fun CodeBlock(text: String, language: String = "") {
+    Column(Modifier.fillMaxWidth().background(Slate3, RoundedCornerShape(8.dp)).border(1.dp, Slate6, RoundedCornerShape(8.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (language.isNotBlank()) Text(language, style = MaterialTheme.typography.labelSmall)
+        Text(text.trimEnd('\n'), modifier = Modifier.horizontalScroll(rememberScrollState()), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, softWrap = false)
     }
 }
 
