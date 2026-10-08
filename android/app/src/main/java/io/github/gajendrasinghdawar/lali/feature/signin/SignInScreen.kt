@@ -29,11 +29,21 @@ import io.github.gajendrasinghdawar.lali.theme.LaliTheme
 @Composable
 fun SignInScreen(viewModel: SignInViewModel) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
-  SignInScreen(state = state, onCheckGateway = viewModel::checkGateway)
+  SignInScreen(
+      state = state, 
+      onCheckGateway = viewModel::checkGateway,
+      onBeginSignIn = viewModel::beginSignIn,
+      onResetFlow = viewModel::resetFlow
+  )
 }
 
 @Composable
-internal fun SignInScreen(state: SignInUiState, onCheckGateway: () -> Unit) {
+internal fun SignInScreen(
+  state: SignInUiState, 
+  onCheckGateway: () -> Unit, 
+  onBeginSignIn: () -> Unit,
+  onResetFlow: () -> Unit
+) {
   Scaffold { innerPadding ->
     Column(
       modifier =
@@ -70,23 +80,130 @@ internal fun SignInScreen(state: SignInUiState, onCheckGateway: () -> Unit) {
         }
       }
 
-      // Launch Web Auth via Custom Tab
+      // Launch Web Auth via Custom Tab when new code is received
       val context = androidx.compose.ui.platform.LocalContext.current
-      Button(
-        onClick = {
-          val url = "http://10.0.2.2:5173/login?client=android"
-          val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-          context.startActivity(intent)
-        },
-        modifier = Modifier.fillMaxWidth()
-      ) {
-        Text("Sign in with Web")
+      androidx.compose.runtime.LaunchedEffect(state.authState) {
+          if (state.authState is AuthFlowState.WaitingForApproval && state.authState.pollAttempt == 0) {
+              val uri = state.authState.verificationUri
+              val intent = androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+              intent.launchUrl(context, android.net.Uri.parse(uri))
+          }
       }
-      Text(
-        "Securely authenticate via your browser.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
+
+      // Real-time Auth Diagnostics & Live Interactions
+      when (val auth = state.authState) {
+        AuthFlowState.Idle -> {
+          Button(
+            onClick = onBeginSignIn,
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Text("Sign in with Web")
+          }
+          Text(
+            "Securely authenticate via your browser.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+        AuthFlowState.RequestingCode -> {
+          Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Text("Requesting Device Authorization...", style = MaterialTheme.typography.titleMedium)
+              Text("Contacting Gateway: ${state.gatewayBaseUrl}", style = MaterialTheme.typography.bodySmall)
+            }
+          }
+        }
+        is AuthFlowState.WaitingForApproval -> {
+          Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.CardDefaults.cardColors(
+              containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+          ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+              Text("Approval in Progress", style = MaterialTheme.typography.titleMedium)
+              
+              Column(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(8.dp),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+              ) {
+                Text("Verification Code", style = MaterialTheme.typography.labelSmall)
+                Text(
+                  auth.userCode,
+                  style = MaterialTheme.typography.headlineMedium,
+                  color = MaterialTheme.colorScheme.primary,
+                  fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+              }
+
+              Text(
+                text = "Live Status: ${auth.liveStatus}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+
+              Text(
+                text = "Target URL: ${auth.verificationUri}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+
+              androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                OutlinedButton(
+                  onClick = {
+                    val intent = androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+                    intent.launchUrl(context, android.net.Uri.parse(auth.verificationUri))
+                  },
+                  modifier = Modifier.weight(1f)
+                ) {
+                  Text("Reopen Web")
+                }
+
+                OutlinedButton(
+                  onClick = onResetFlow,
+                  modifier = Modifier.weight(1f)
+                ) {
+                  Text("Cancel")
+                }
+              }
+            }
+          }
+        }
+        is AuthFlowState.Success -> {
+          Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.CardDefaults.cardColors(
+              containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+          ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Text("Authenticated!", style = MaterialTheme.typography.titleMedium)
+              Text("Session active. Navigating...", style = MaterialTheme.typography.bodySmall)
+            }
+          }
+        }
+        is AuthFlowState.Error -> {
+          Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.CardDefaults.cardColors(
+              containerColor = MaterialTheme.colorScheme.errorContainer
+            )
+          ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Text("Authentication Error", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+              Text(auth.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+              Button(onClick = onBeginSignIn, modifier = Modifier.fillMaxWidth()) {
+                Text("Try Again")
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -112,6 +229,8 @@ private fun SignInScreenPreview() {
     SignInScreen(
       state = SignInUiState("http://10.0.2.2:3000", GatewayStatus.Checked(GatewayHealth.Ready)),
       onCheckGateway = {},
+      onBeginSignIn = {},
+      onResetFlow = {}
     )
   }
 }

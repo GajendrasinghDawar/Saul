@@ -116,6 +116,7 @@ export const deviceCode = sqliteTable('deviceCode', {
   status: text('status').notNull(),
   expiresAt: integer('expiresAt', { mode: 'timestamp' }).notNull(),
   lastPolledAt: integer('lastPolledAt', { mode: 'timestamp' }),
+  pollingInterval: integer('pollingInterval'),
   createdAt: integer('createdAt', { mode: 'timestamp' }),
   updatedAt: integer('updatedAt', { mode: 'timestamp' }),
 })

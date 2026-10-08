@@ -35,7 +35,12 @@ function LoginPage() {
         return
       }
 
-      window.location.href = '/'
+      const redirectTo = searchParams.get('redirect')
+      if (redirectTo && redirectTo.startsWith('/')) {
+        window.location.href = redirectTo
+      } else {
+        window.location.href = '/'
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to sign in')
       setIsSubmitting(false)

@@ -17,14 +17,17 @@ android {
 
     // Override with -Plali.gatewayBaseUrl=... (for example http://localhost:3000 with `adb reverse tcp:3000 tcp:3000`).
     val gatewayBaseUrl = providers.gradleProperty("lali.gatewayBaseUrl")
+    val webBaseUrl = providers.gradleProperty("lali.webBaseUrl")
     buildTypes {
         debug {
             // 10.0.2.2 is the Android emulator's alias for the host loopback interface.
             buildConfigField("String", "GATEWAY_BASE_URL", "\"${gatewayBaseUrl.getOrElse("http://10.0.2.2:3000")}\"")
+            buildConfigField("String", "WEB_BASE_URL", "\"${webBaseUrl.getOrElse("http://10.0.2.2:5173")}\"")
         }
         release {
             // Release builds only permit HTTPS (see res/xml/network_security_config.xml).
             buildConfigField("String", "GATEWAY_BASE_URL", "\"${gatewayBaseUrl.getOrElse("")}\"")
+            buildConfigField("String", "WEB_BASE_URL", "\"${webBaseUrl.getOrElse("")}\"")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -94,5 +97,13 @@ dependencies {
   implementation(libs.ktor.client.core)
   implementation(libs.ktor.client.android)
   implementation(libs.ktor.client.auth)
+  implementation(libs.ktor.client.content.negotiation)
+  implementation(libs.ktor.serialization.kotlinx.json)
   testImplementation(libs.ktor.client.mock)
+  
+  // Security
+  implementation(libs.androidx.security.crypto)
+  
+  // Custom Tabs
+  implementation(libs.androidx.browser)
 }

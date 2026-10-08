@@ -1,12 +1,12 @@
 # Native Android authentication
 
-Status: planned; implementation has not started.
+Status: completed for slice 1. Better Auth device authorization and bearer plugins, the `deviceCode` schema model, the web verification page, and Android request/polling code are implemented and verified end-to-end on emulator. Detailed troubleshooting, root causes, and edge cases are documented in [`docs/android-auth-troubleshooting-and-edge-cases.md`](../android-auth-troubleshooting-and-edge-cases.md).
 
 The authoritative implementation sequence is in [`docs/android-client-implementation-guide.md`](../android-client-implementation-guide.md#authentication-design).
 
 ## Problem
 
-The Android client needs a durable identity for authenticated HTTP and SSE requests. The current Gateway is proven only with Better Auth browser session cookies. The Android scaffold does not yet have an approved native authentication contract.
+The Android client needs a durable identity for authenticated HTTP, mutation, and SSE requests. The selected Better Auth device flow now exists, but it still needs database migration, client validation, browser return handling, revocation, and automated end-to-end proof.
 
 ## Decision
 
@@ -18,19 +18,18 @@ Android requests a short-lived device challenge
 -> user signs in through the existing Better Auth web flow
 -> authenticated user approves the device challenge
 -> Android polls at the server-provided interval
--> Gateway returns a scoped, revocable credential once
+-> Gateway returns a revocable Better Auth session token once
 -> Android encrypts the credential with an Android Keystore key
 -> Ktor uses it for HTTP and SSE Authorization headers
 ```
 
-Evaluate Better Auth’s installed `deviceAuthorization` and `bearer` plugins first. If they do not meet the requirements, implement the same protocol with project-owned one-time codes. Record the final plugin/API decision in this specification before coding.
+The selected first-party implementation is Better Auth `deviceAuthorization()` plus `bearer()`. Android uses client ID `android-client`, polls `/api/auth/device/token`, and receives a Better Auth session token. Standardize and validate that client ID before release.
 
 ## Security requirements
 
-- The callback and browser URLs contain only an opaque, short-lived challenge or authorization code.
-- Release builds use verified HTTPS Android App Links.
-- A debug-only custom scheme may be used for local development.
-- Every challenge is random, short-lived, single-use, and bound to the initiating client/state.
+- Browser URLs contain only the human-readable, short-lived user code.
+- The flow uses polling and has no authentication callback or credential-bearing deep link.
+- Every challenge is random, short-lived, single-use, and bound to the initiating client ID.
 - Tokens never appear in URLs, logs, analytics, screenshots, notifications, or clipboard content.
 - Android stores bearer material encrypted with a non-exportable Android Keystore key.
 - The Gateway stores only the server-side representation needed to validate or revoke a credential.
@@ -39,32 +38,36 @@ Evaluate Better Auth’s installed `deviceAuthorization` and `bearer` plugins fi
 - Authentication failures close active SSE streams and return to the signed-out root flow.
 - Gateway ownership and role checks remain authoritative for every API operation.
 
-## Gateway work
+## Remaining Gateway work
 
-1. Configure and test the selected Better Auth native plugins or equivalent device-code endpoints.
-2. Make `createAuthGuard()` resolve the native bearer identity.
-3. Define CSRF behavior for bearer-authenticated mutations separately from browser-cookie requests.
-4. Add device-session revocation and expiry.
-5. Verify authenticated HTTP and SSE requests.
-6. Remove request, token, and transcript debug logging.
-7. Return stable `401` and `403` error bodies.
+1. Generate, review, and apply the `deviceCode` Drizzle migration.
+2. Configure `validateClient` to accept only `android-client`.
+3. Make unauthenticated verification return through login to `/device?user_code=...`.
+4. Remove the obsolete token-in-custom-URL branch from the login page.
+5. Verify `createAuthGuard()` resolves the native bearer identity.
+6. Define CSRF behavior for bearer-authenticated mutations separately from browser-cookie requests.
+7. Add device-session revocation and expiry behavior.
+8. Verify authenticated HTTP, mutation, and SSE requests with automated tests.
+9. Remove request, token, code, and transcript debug logging.
+10. Return stable `401` and `403` error bodies.
 
-## Android work
+## Remaining Android work
 
-1. Replace plaintext `SharedPreferences` token storage with a Keystore-backed credential store.
-2. Move sign-in coordination into `AuthRepository`; ViewModels must not receive `Activity` or `Context`.
-3. Configure the verification URL through `BuildConfig` rather than hard-coding emulator addresses.
-4. Open the verification page in a Custom Tab.
-5. Poll or exchange the one-time challenge through Ktor.
-6. Drive the Navigation 3 root flow from authenticated state.
+1. Replace the alpha/deprecated `EncryptedSharedPreferences` prototype with direct Android Keystore-backed encryption.
+2. Keep sign-in coordination in `AuthRepository`; ViewModels must not receive `Activity` or `Context`.
+3. Resolve relative verification URLs against the configured Gateway URL.
+4. Handle `authorization_pending`, `slow_down`, denial, expiry, cancellation, and transient network failures explicitly.
+5. Stop polling when the sign-in flow is cancelled or its owner is cleared.
+6. Validate the resulting token with `/api/auth/get-session` before entering the authenticated graph.
 7. Attach the bearer credential to normal and SSE requests.
-8. Clear credential and cached user data atomically on sign-out.
+8. Revoke the remote session before clearing the local credential and cached user data.
+9. Add repository, ViewModel, process-restart, and Compose tests.
 
 ## Acceptance tests
 
 - successful browser authorization and return;
 - challenge expiry, replay, malformed input, and cancellation;
-- callback interception attempt from an unverified source;
+- no credential-bearing callback or deep link is registered;
 - process restart remains signed in;
 - revoked or expired credential returns to sign-in;
 - authenticated conversation list and SSE stream use the same identity;

@@ -14,17 +14,24 @@ import io.github.gajendrasinghdawar.lali.feature.signin.SignInViewModel
 @Composable
 fun MainNavigation(container: AppContainer) {
   val token by container.tokenRepository.tokenFlow.collectAsStateWithLifecycle()
-  val startDestination = if (token != null) Home else SignIn
   
-  val backStack = rememberNavBackStack(startDestination)
-
-  NavDisplay(
-    backStack = backStack,
-    onBack = { backStack.removeLastOrNull() },
-    entryProvider =
-      entryProvider {
-        entry<SignIn> { SignInScreen(viewModel { SignInViewModel(container.gatewayClient) }) }
-        entry<Home> { HomeScreen(container) }
-      },
-  )
+  if (token != null) {
+      val authBackStack = rememberNavBackStack(Home)
+      NavDisplay(
+          backStack = authBackStack,
+          onBack = { authBackStack.removeLastOrNull() },
+          entryProvider = entryProvider {
+              entry<Home> { HomeScreen(container) }
+          }
+      )
+  } else {
+      val unauthBackStack = rememberNavBackStack(SignIn)
+      NavDisplay(
+          backStack = unauthBackStack,
+          onBack = { unauthBackStack.removeLastOrNull() },
+          entryProvider = entryProvider {
+              entry<SignIn> { SignInScreen(viewModel { SignInViewModel(container.gatewayClient, container.authRepository) }) }
+          }
+      )
+  }
 }

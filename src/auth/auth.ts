@@ -39,9 +39,11 @@ export const auth = betterAuth({
     'http://127.0.0.1:5174',
     'http://localhost:5175',
     'http://127.0.0.1:5175',
+    'http://10.0.2.2:5173',
+    'http://10.0.2.2:3000',
   ],
   rateLimit: {
-    enabled: true,
+    enabled: getSecret('NODE_ENV') === 'production',
     storage: 'database',
     customRules: {
       '/api/auth/sign-in/email': { window: 60, max: 5 },

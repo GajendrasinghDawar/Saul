@@ -28,7 +28,7 @@ Compose UI
 
 Build vertical slices in this order:
 
-1. secure native authentication;
+1. finish and harden the native device-authorization flow;
 2. exact theme and app shell;
 3. conversation list and navigation;
 4. read-only transcript plus live SSE snapshots;
@@ -76,32 +76,42 @@ The baseline unit tests and Android lint pass with that JDK. Connected tests wer
 The Android app currently has:
 
 - a single `MainActivity` with edge-to-edge enabled;
-- Navigation 3 keys for `SignIn` and `Home`;
+- separate authenticated and unauthenticated Navigation 3 stacks;
 - a manual dependency container;
-- a Ktor health request;
-- a browser intent for web sign-in;
-- a custom `saul://auth` callback;
+- Ktor health and JSON support;
+- a device-code repository that requests and polls Better Auth endpoints;
+- Custom Tab launch from the sign-in screen;
+- encrypted-preferences token storage as a prototype;
 - a placeholder authenticated home screen;
 - basic unit and Compose UI tests.
 
-It does not yet have conversations, chat, SSE, markdown, tasks, settings, caching, attachments, approvals, or notifications.
+The current backend/web implementation now has:
 
-### Blocking problems in the current scaffold
+- Better Auth `deviceAuthorization()` and `bearer()` plugins;
+- a `deviceCode` Drizzle model;
+- a `/device` verification and approval page;
+- the standard `/api/auth/device/*` endpoints supplied by Better Auth.
 
-Resolve these before treating authentication as complete:
+It does not yet have conversations, chat, SSE, markdown, tasks, settings, caching, attachments, approvals, or notifications on Android.
 
-1. `MainActivity` logs the token. Credentials must never appear in logs.
-2. `TokenRepository` stores the token as plaintext in `SharedPreferences`.
-3. A bearer token is placed in a custom-scheme URL. Any app can register the same custom scheme, so this is vulnerable to interception.
-4. The web app cannot safely extract an HttpOnly Better Auth session cookie and pass it to Android.
-5. The server does not currently install Better Auth’s bearer plugin. `createAuthGuard()` therefore only has a proven browser-cookie path.
-6. Chat POST requests require cookie-bound double-submit CSRF. A native bearer client needs an explicit server policy rather than pretending to be a browser.
-7. `rememberNavBackStack(startDestination)` does not replace the remembered stack when authentication changes. Authentication must drive the root graph explicitly.
-8. The browser login URL is hard-coded to `10.0.2.2:5173` instead of using build configuration.
-9. The Android theme uses warm terracotta colors, while the current web app uses dark slate surfaces with crimson, jade, amber, and red accents.
-10. `src/controllers/chat.ts` currently logs request bodies and settled results. Remove these debug logs before mobile testing with private conversations.
+### Remaining authentication work
 
-Treat `docs/specs/001-android-auth-flow.md` as the focused auth requirements document. Finalize its Better Auth plugin and endpoint details before implementation.
+The backend foundation is configured, but the flow is not production-complete. Finish these items before starting protected feature work:
+
+1. Add and apply a reviewed Drizzle migration for `deviceCode`; a schema declaration alone does not update deployed databases.
+2. Add `validateClient` and standardize the client ID. Android currently sends `android-client`; reject every other first-party client ID.
+3. Make `/device` reachable before `AuthGate`, or preserve `/device?user_code=...` through login and return to it after authentication. The current root gate/login redirect path does not do this reliably.
+4. Remove the obsolete `client=android` branch in `web/src/routes/login.tsx`; it still attempts to place a session token in `saul://auth`.
+5. Replace the manual `test-bearer.ts` script with automated integration tests. The script currently prints device codes, bearer tokens, and SSE data and must not be retained as a security test.
+6. Define bearer-versus-cookie CSRF behavior. `POST /api/chat` still requires cookie-bound double-submit CSRF, so a valid Android bearer request can authenticate and still fail the mutation.
+7. Make Android polling handle `slow_down`, cancellation, network retry, non-2xx error bodies, and app lifecycle changes.
+8. Make sign-out revoke the Better Auth server session before clearing local state. The current implementation only clears local storage.
+9. Replace the alpha/deprecated `EncryptedSharedPreferences` prototype with direct Android Keystore-backed encryption using stable platform APIs.
+10. Add authenticated HTTP and SSE tests proving `createAuthGuard()` resolves the bearer identity.
+11. Remove request-body and settled-result debug logs from `src/controllers/chat.ts` before testing private conversations.
+12. Replace the warm Android theme with the web slate/crimson design system.
+
+Treat `docs/specs/001-android-auth-flow.md` as the focused auth requirements document and update its status when this completion list passes.
 
 ## Actual web and Gateway capability matrix
 
@@ -111,7 +121,7 @@ This matrix separates visible web features from server-ready contracts. Android 
 | ----------------------------- | ---------- | --------------------------------------- | ------------------- |
 | Email/password account flows  | Yes        | Better Auth routes                      | Auth browser flow   |
 | Session-cookie authentication | Yes        | Yes                                     | Browser only        |
-| Native bearer authentication  | No         | Not configured                          | Blocker             |
+| Native bearer authentication  | In progress | Better Auth plugins configured          | Finish and verify   |
 | Conversation list             | Yes        | `GET /api/conversations`                | P1                  |
 | Create conversation           | Yes        | `POST /api/new-thread`                  | P1                  |
 | Rename conversation           | Yes        | `PATCH /api/conversations/:id`          | P1                  |
@@ -228,7 +238,7 @@ Authentication is the first backend-and-Android slice.
 
 ### Recommended flow
 
-Use a browser-owned sign-in plus a one-time device authorization exchange. The installed Better Auth version contains `deviceAuthorization` and `bearer` plugins, but the project has configured neither. Verify their current official documentation and installed types before implementation.
+The project has selected Better Auth’s first-party device authorization flow. `src/auth/auth.ts` now configures `deviceAuthorization({ verificationUri: '/device' })` and `bearer()`. This is the correct base for the Android client: the browser owns user authentication and approval, while Android receives a Better Auth session token by polling.
 
 Preferred trace:
 
@@ -238,37 +248,61 @@ Android requests a short-lived device challenge
 -> user signs in using the existing web flow
 -> authenticated web page approves the displayed device/user code
 -> Android polls the token endpoint at the server-provided interval
--> Gateway returns a scoped bearer/session token once
+-> Gateway returns a Better Auth session token once
 -> Android encrypts it with an Android Keystore key
 -> Ktor adds Authorization: Bearer ... to API and SSE requests
 ```
 
-Use the standard device-authorization plugin if it satisfies these properties. Otherwise implement an equivalent one-time-code exchange. Do not put a session or bearer token in a callback URL.
+The device flow does not need a callback deep link. Android opens the verification page and independently polls the token endpoint. This removes the custom-scheme interception problem.
 
-### Server work required
+### Implemented endpoint contract
 
-- install and configure a reviewed native token mechanism;
-- make `createAuthGuard()` accept the validated native identity;
-- define whether bearer-authenticated unsafe methods bypass browser CSRF or use another anti-replay rule;
-- add device/session listing and revocation before broad distribution;
+Because Better Auth is mounted at `/api/auth`, Android uses:
+
+| Step | Method and endpoint | Important fields |
+| --- | --- | --- |
+| Request codes | `POST /api/auth/device/code` | `client_id: "android-client"` |
+| Verify/claim in browser | `GET /api/auth/device?user_code=...` | authenticated browser cookie |
+| Approve in browser | `POST /api/auth/device/approve` | `userCode` |
+| Deny in browser | `POST /api/auth/device/deny` | `userCode` |
+| Poll from Android | `POST /api/auth/device/token` | RFC 8628 grant type, `device_code`, `client_id` |
+
+The code response contains `device_code`, `user_code`, `verification_uri`, `verification_uri_complete`, `expires_in`, and `interval`. A successful token response returns `access_token`, `token_type`, `expires_in`, and `scope`. For this standalone first-party flow, `access_token` is a Better Auth session token.
+
+Android must honor the returned interval and these terminal/intermediate errors:
+
+- `authorization_pending`: continue at the current interval;
+- `slow_down`: increase the interval by five seconds;
+- `access_denied`: stop and show denial;
+- `expired_token`: stop and offer restart;
+- `invalid_grant`: discard the challenge.
+
+### Server completion work
+
+- validate the single supported Android client ID;
+- apply the `deviceCode` database migration;
+- make the browser verification/login return path deterministic;
+- remove the old token-in-deep-link login path;
+- define bearer-authenticated mutation handling alongside browser CSRF;
+- add server-side sign-out/revocation and later device-session management;
 - return consistent `401` versus `403` errors;
 - test HTTP and SSE with the same bearer identity;
-- ensure tokens, authorization headers, and auth payloads are redacted from logs.
+- redact tokens, authorization headers, device codes, and private payloads from logs.
 
 ### Android storage
 
-Replace plaintext `SharedPreferences` with:
+The current Android prototype has moved from plaintext preferences to `EncryptedSharedPreferences`, but that dependency/API is alpha and deprecated. Replace the prototype with:
 
-- an AES key generated in `AndroidKeyStore`;
+- an AES key generated directly in `AndroidKeyStore`;
 - encrypted token bytes in private app storage or DataStore;
 - no backup for bearer material unless a deliberate credential restore design exists;
 - complete token and user-cache removal on sign-out or unauthorized response.
 
 The Keystore protects key material from extraction; perform cryptographic operations off the main thread. StrongBox is optional, not a baseline requirement.
 
-### App Links
+### Browser handoff
 
-Use a verified HTTPS Android App Link (`android:autoVerify="true"`) for any production callback. Custom schemes are acceptable only for a clearly marked local debug build. Validate scheme, host, path, state, expiry, and one-time code before changing auth state.
+Open `verification_uri_complete` in a Custom Tab. No app callback is required: polling completes the flow even when the browser remains open. Keep Android App Links for future notification/chat deep links, not for transporting authentication credentials.
 
 ## Gateway contract strategy
 
@@ -567,24 +601,28 @@ Do not keep SSE alive from WorkManager or an unbounded foreground service. Futur
 
 ## Delivery plan
 
-### Slice 0 — stabilize the scaffold
+### Slice 0 — complete device authorization
 
-Deliver:
+The plugin configuration, web approval screen, Android code request/polling, auth-driven navigation, and prototype encrypted storage now exist.
 
-- remove token logging;
-- replace plaintext token persistence;
-- make browser URLs configurable;
-- correct auth-driven root navigation;
-- rename packages/files only if the product naming decision requires it;
-- add deterministic fake repositories for previews/tests.
+Finish:
 
-Done when unit tests, lint, connected sign-in UI tests, layout inspection, and a screenshot pass.
+- database migration;
+- canonical `android-client` validation;
+- browser login return to `/device`;
+- deletion of the old token-in-deep-link path;
+- stable Keystore-backed token encryption;
+- polling state/error/cancellation handling;
+- remote sign-out/revocation;
+- automated backend, repository, and Compose tests.
 
-### Slice 1 — native auth contract
+Done when sign-in, process restart, expiry, denial, slow-down, sign-out, and revocation pass without a credential appearing in URLs, logs, screenshots, or test output.
 
-Deliver the reviewed device authorization/bearer server contract and Android client. Do not proceed with protected API work until `GET /api/auth/get-session`, conversation list, and SSE all authenticate from Android.
+### Slice 1 — prove authenticated Gateway access
 
-Done when sign-in, process restart, expired token, sign-out, revocation, and malicious callback tests pass without a token appearing in logs or URLs.
+Use the resulting bearer token with `GET /api/auth/get-session`, `GET /api/conversations`, and `GET /api/stream`. Resolve bearer mutation/CSRF handling and prove one protected POST request.
+
+Done when the same bearer identity works for normal HTTP, SSE, and an authorized mutation, while invalid/revoked tokens consistently return `401`.
 
 ### Slice 2 — design system and adaptive shell
 
@@ -880,8 +918,8 @@ Before any non-debug distribution:
 
 Make these decisions explicitly, in order:
 
-1. the product name is Saul?
-2. Better Auth native flow will be supported: device authorization?
+1. Confirm the product name and package migration plan: Saul versus the current Lali package/strings.
+2. Keep the selected Better Auth standalone device authorization flow, or deliberately upgrade to OAuth Provider tokens before release.
 3. What is the stable mobile/client-neutral Gateway DTO version?
 4. Is Android dark-only until web has a light theme? yes
 5. Which native Markdown renderer passes the fixture spike?
@@ -891,27 +929,31 @@ Make these decisions explicitly, in order:
 
 ## Recommended first ticket
 
-**Title:** Secure the Android scaffold and prove bearer-authenticated Gateway access
+**Title:** Finish and verify the configured device-authorization flow
 
 **Trace:**
 
 ```text
 Launch Android app
--> request device authorization
--> complete sign-in in Gateway-owned browser UI
--> Android receives/exchanges only a one-time code
--> encrypted credential is stored
--> authenticated session and conversation-list requests succeed
+-> request Better Auth device authorization
+-> open verification_uri_complete in a Custom Tab
+-> login returns to the device approval page
+-> user explicitly approves the displayed client/code
+-> Android polls using the server interval
+-> Keystore-encrypted session credential is stored
+-> authenticated session, conversation-list, and SSE requests succeed
 -> process restart remains signed in
--> sign out revokes/clears the credential and cache
+-> sign out revokes and clears the credential/cache
 ```
 
 **Acceptance criteria:**
 
-- no bearer/session token in a URI or log;
-- callback is a verified App Link in release;
-- Better Auth native plugins/configuration are covered by backend tests;
-- Ktor authenticated HTTP and SSE requests are covered by tests;
+- no bearer/session token or device code in logs;
+- no authentication callback or credential-bearing deep link;
+- only the canonical Android client ID is accepted;
+- Better Auth device/bearer configuration and database migration are covered by backend tests;
+- pending, slow-down, denied, expired, and successful polling are covered by Android tests;
+- Ktor authenticated HTTP, mutation, and SSE requests are covered by tests;
 - root navigation changes correctly on sign-in/sign-out;
 - unit tests, backend tests, lint, build, connected UI test, layout inspection, and screenshots pass.
 

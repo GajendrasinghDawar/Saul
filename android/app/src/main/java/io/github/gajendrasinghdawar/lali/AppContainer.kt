@@ -12,8 +12,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import android.content.SharedPreferences
 
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import kotlinx.serialization.json.Json
+import io.ktor.serialization.kotlinx.json.json
+
 class TokenRepository(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+
+    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        "secure_auth_prefs",
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
 
     private val _tokenFlow = MutableStateFlow(prefs.getString("token", null))
     val tokenFlow: StateFlow<String?> = _tokenFlow.asStateFlow()
@@ -24,6 +40,11 @@ class TokenRepository(context: Context) {
             prefs.edit().putString("token", value).apply()
             _tokenFlow.value = value
         }
+    
+    fun clear() {
+        prefs.edit().remove("token").apply()
+        _tokenFlow.value = null
+    }
 }
 
 class AppContainer(context: Context, gatewayBaseUrl: String) {
@@ -34,6 +55,13 @@ class AppContainer(context: Context, gatewayBaseUrl: String) {
       engine {
         connectTimeout = 5_000
         socketTimeout = 15_000
+      }
+      install(ContentNegotiation) {
+        json(Json {
+          ignoreUnknownKeys = true
+          explicitNulls = false
+          encodeDefaults = true
+        })
       }
       install(Auth) {
         bearer {
@@ -46,4 +74,7 @@ class AppContainer(context: Context, gatewayBaseUrl: String) {
 
   /** Null when the build has no Gateway URL configured. */
   val gatewayClient: GatewayClient? = gatewayBaseUrl.takeIf { it.isNotBlank() }?.let { GatewayClient(httpClient, it) }
+
+  val authRepository: io.github.gajendrasinghdawar.lali.core.auth.AuthRepository = 
+    io.github.gajendrasinghdawar.lali.core.auth.DefaultAuthRepository(httpClient, tokenRepository, gatewayBaseUrl)
 }
