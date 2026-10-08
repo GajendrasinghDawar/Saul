@@ -8,6 +8,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.github.gajendrasinghdawar.lali.theme.Indigo8
+import io.github.gajendrasinghdawar.lali.theme.Slate3
 
 @Composable
 fun LaliInput(
@@ -28,9 +30,9 @@ fun LaliInput(
         shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
             unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-            focusedContainerColor = MaterialTheme.colorScheme.surface
+            focusedBorderColor = Indigo8,
+            unfocusedContainerColor = Slate3,
+            focusedContainerColor = Slate3
         )
     )
 }

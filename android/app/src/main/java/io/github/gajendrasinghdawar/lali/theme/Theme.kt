@@ -13,6 +13,15 @@ private val DarkColorScheme =
     surface = Slate2,
     surfaceVariant = Slate3,
     surfaceContainerHighest = Slate3,
+    surfaceContainer = Slate2,
+    surfaceContainerLow = Slate2,
+    surfaceContainerHigh = Slate3,
+    outline = Slate6,
+    outlineVariant = Slate4,
+    primaryContainer = Crimson3,
+    onPrimaryContainer = Crimson11,
+    secondaryContainer = Slate4,
+    onSecondaryContainer = Slate12,
     onBackground = Slate11,
     onSurface = Slate11,
     onSurfaceVariant = Slate10,
@@ -21,7 +30,7 @@ private val DarkColorScheme =
   )
 
 @Composable
-fun LaliTheme(darkTheme: Boolean = true, content: @Composable () -> Unit) {
+fun LaliTheme(content: @Composable () -> Unit) {
   // Always enforce dark theme as per guidelines until light theme is approved.
   MaterialTheme(
     colorScheme = DarkColorScheme,

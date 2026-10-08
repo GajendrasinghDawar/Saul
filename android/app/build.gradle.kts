@@ -13,6 +13,7 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // Override with -Plali.gatewayBaseUrl=... (for example http://localhost:3000 with `adb reverse tcp:3000 tcp:3000`).

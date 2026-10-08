@@ -35,6 +35,17 @@ fun LaliPrimaryButton(
 }
 
 @Composable
+fun LaliDangerButton(onClick: () -> Unit, text: String, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+    ) { Text(text) }
+}
+
+@Composable
 fun LaliSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,

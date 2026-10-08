@@ -2,6 +2,20 @@ package io.github.gajendrasinghdawar.lali.theme
 
 import androidx.compose.ui.graphics.Color
 
+// Indigo is the field-focus accent; the other palettes mirror web theme.css.
+val Indigo1 = Color.hsl(231f, .29f, .09f)
+val Indigo2 = Color.hsl(230f, .31f, .11f)
+val Indigo3 = Color.hsl(225f, .51f, .19f)
+val Indigo4 = Color.hsl(225f, .54f, .25f)
+val Indigo5 = Color.hsl(225f, .52f, .30f)
+val Indigo6 = Color.hsl(226f, .47f, .35f)
+val Indigo7 = Color.hsl(226f, .44f, .41f)
+val Indigo8 = Color.hsl(226f, .45f, .48f)
+val Indigo9 = Color.hsl(226f, .70f, .55f)
+val Indigo10 = Color.hsl(228f, .73f, .61f)
+val Indigo11 = Color.hsl(228f, 1f, .81f)
+val Indigo12 = Color.hsl(224f, 1f, .92f)
+
 val Slate1 = Color(0xFF101012)
 val Slate2 = Color(0xFF18191B)
 val Slate3 = Color(0xFF212225)
