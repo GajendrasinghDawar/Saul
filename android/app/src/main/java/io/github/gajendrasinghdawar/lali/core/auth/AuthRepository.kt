@@ -6,6 +6,11 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.HttpMethod
+import io.github.gajendrasinghdawar.lali.core.network.GatewayApi
+import io.github.gajendrasinghdawar.lali.core.network.GatewayException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName
@@ -126,6 +131,12 @@ class DefaultAuthRepository(
     }
 
     override suspend fun signOut() {
-        tokenRepository.clear()
+        if (sessionToken.value != null) {
+            val api = GatewayApi(httpClient, gatewayBaseUrl, { sessionToken.value }, tokenRepository::clear)
+            try { api.request(HttpMethod.Post, "/api/auth/sign-out") }
+            catch (e: GatewayException) { if (e.status != 401) throw e }
+        }
+        // Auth-driven navigation can dispose this ViewModel during credential removal.
+        withContext(NonCancellable) { tokenRepository.clear() }
     }
 }

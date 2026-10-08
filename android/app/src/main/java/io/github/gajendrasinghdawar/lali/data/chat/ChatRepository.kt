@@ -3,6 +3,8 @@ package io.github.gajendrasinghdawar.lali.data.chat
 import io.github.gajendrasinghdawar.lali.core.network.*
 import io.github.gajendrasinghdawar.lali.ui.components.ConnectionStatus
 import io.ktor.client.plugins.sse.*
+import io.ktor.client.plugins.HttpTimeoutConfig
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.*
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.*
@@ -83,6 +85,7 @@ class GatewayChatRepository(private val api: GatewayApi) : ChatRepository {
                     api.http.sse(request = {
                         url("${api.baseUrl.trimEnd('/')}/api/stream")
                         parameter("conversationId", id)
+                        timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS; socketTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
                         api.authorize(this)
                         bufferPolicy(SSEBufferPolicy.Off)
                     }) {

@@ -1,6 +1,7 @@
 package io.github.gajendrasinghdawar.lali.core.network
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.*
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -27,6 +28,8 @@ class GatewayApi(
     suspend fun request(method: HttpMethod, path: String, body: JsonObject? = null): JsonObject {
         val response = http.request("${baseUrl.trimEnd('/')}$path") {
             this.method = method
+            // Chat replies only after the durable run settles; CRUD uses the normal 30s policy.
+            if (path == "/api/chat") timeout { requestTimeoutMillis = 300_000; socketTimeoutMillis = 300_000 }
             authorize(this)
             if (body != null) {
                 contentType(ContentType.Application.Json)

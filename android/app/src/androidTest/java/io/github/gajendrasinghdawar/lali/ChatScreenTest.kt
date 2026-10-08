@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.runtime.mutableStateOf
 import io.github.gajendrasinghdawar.lali.theme.LaliTheme
 import io.github.gajendrasinghdawar.lali.data.chat.*
@@ -17,7 +19,8 @@ import org.junit.*
 class ChatScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     @Test fun thinkingDisclosureToolsAndScrollableCode() {
-        val message = ChatMessage("12", MessageRole.Assistant, "A small example:\n\n```kotlin\nval result = notes.search(query = \"weekend plans and a very long example query\")\n```", thinking = "Search the notes before answering.", tools = listOf(
+        val codeLine = "val result = notes.search(query = \"${"weekend plans ".repeat(20)}\")"
+        val message = ChatMessage("12", MessageRole.Assistant, "A small example:\n\n```kotlin\n$codeLine\n```", thinking = "Search the notes before answering.", tools = listOf(
             ToolActivity("a", "search", "{\"query\":\"weekend\"}", ToolStatus.Done),
             ToolActivity("b", "read", "{\"path\":\"notes.md\"}", ToolStatus.Running),
         ))
@@ -35,7 +38,10 @@ class ChatScreenTest {
         capture("chat-thinking.png")
         compose.onNodeWithText("Hide thinking").performClick()
         compose.onNodeWithText("Search the notes before answering.").assertDoesNotExist()
-        compose.onNodeWithText("val result", substring = true).performTouchInput { swipeLeft() }
+        val code = compose.onNodeWithText("val result", substring = true)
+        code.performSemanticsAction(SemanticsActions.ScrollBy) { scroll -> scroll(500f, 0f) }
+        compose.waitForIdle()
+        org.junit.Assert.assertTrue(code.fetchSemanticsNode().config[SemanticsProperties.HorizontalScrollAxisRange].value() > 0f)
         capture("chat-tools.png")
     }
 

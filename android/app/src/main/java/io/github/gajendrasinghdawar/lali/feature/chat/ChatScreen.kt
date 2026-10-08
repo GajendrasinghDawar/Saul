@@ -21,12 +21,14 @@ import io.github.gajendrasinghdawar.lali.core.markdown.MarkdownText
 import io.github.gajendrasinghdawar.lali.data.chat.*
 import io.github.gajendrasinghdawar.lali.theme.*
 import io.github.gajendrasinghdawar.lali.ui.components.StatusIndicator
+import io.github.gajendrasinghdawar.lali.ui.components.ConnectionStatus
 import io.github.gajendrasinghdawar.lali.ui.components.LaliInput
 import io.github.gajendrasinghdawar.lali.ui.components.LaliPrimaryButton
 
 @Composable
-fun ChatScreen(viewModel: ChatViewModel) {
+fun ChatScreen(viewModel: ChatViewModel, onConnectionChange: (ConnectionStatus) -> Unit = {}) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(state.conversation.connection) { onConnectionChange(state.conversation.connection) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(viewModel, lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.connect() } }
     ChatScreen(state, viewModel::editDraft, viewModel::send, viewModel::toggleThinking)
