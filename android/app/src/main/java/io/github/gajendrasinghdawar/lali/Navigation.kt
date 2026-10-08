@@ -9,6 +9,8 @@ import androidx.navigation3.runtime.*
 import androidx.navigation3.ui.NavDisplay
 import io.github.gajendrasinghdawar.lali.feature.conversations.*
 import io.github.gajendrasinghdawar.lali.feature.signin.*
+import io.github.gajendrasinghdawar.lali.feature.chat.*
+import io.github.gajendrasinghdawar.lali.data.chat.GatewayChatRepository
 import io.github.gajendrasinghdawar.lali.ui.shell.*
 import kotlinx.coroutines.launch
 
@@ -45,7 +47,9 @@ fun MainNavigation(container: AppContainer) {
                         }
                         ConversationListScreen(state, { stack.add(Chat(it)) }, vm::create, vm::refresh, vm::rename, vm::delete)
                     }
-                    entry<Chat> { Text("Conversation #${it.id}") }
+                    entry<Chat> { destination ->
+                        ChatScreen(viewModel { ChatViewModel(destination.id, GatewayChatRepository(container.api)) })
+                    }
                     entry<Tasks> { Text("Tasks") }
                     entry<Settings> { Text("Settings") }
                 })

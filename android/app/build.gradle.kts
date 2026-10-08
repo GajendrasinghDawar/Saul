@@ -73,6 +73,7 @@ dependencies {
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.compose.material3)
+  implementation("org.commonmark:commonmark:0.30.0")
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)
   // Instrumented tests
@@ -101,6 +102,7 @@ dependencies {
   implementation(libs.ktor.client.content.negotiation)
   implementation(libs.ktor.serialization.kotlinx.json)
   testImplementation(libs.ktor.client.mock)
+  testImplementation("io.ktor:ktor-client-cio:${libs.versions.ktor.get()}")
   
   // Custom Tabs
   implementation(libs.androidx.browser)
