@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.runtime.mutableStateOf
 import io.github.gajendrasinghdawar.lali.theme.LaliTheme
 import io.github.gajendrasinghdawar.lali.data.chat.*
 import io.github.gajendrasinghdawar.lali.feature.chat.*
@@ -15,6 +16,17 @@ import org.junit.*
 
 class ChatScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun composerBlocksEmptyAndBusyAndAcceptsMultiline() {
+        val state = mutableStateOf(ChatUiState(ConversationState(connection = ConnectionStatus.Online)))
+        var sends = 0
+        compose.setContent { LaliTheme { ChatScreen(state.value, { state.value = state.value.copy(draft = it) }, { sends++ }) } }
+        compose.onNodeWithText("Send").assertIsNotEnabled()
+        compose.onNode(hasSetTextAction()).performTextInput("First line\nSecond line")
+        compose.onNodeWithText("Send").assertIsEnabled().performClick()
+        org.junit.Assert.assertEquals(1, sends)
+        compose.runOnIdle { state.value = state.value.copy(conversation = state.value.conversation.copy(projection = ChatProjection(busy = true))) }
+        compose.onNodeWithText("Send").assertIsNotEnabled()
+    }
     @Test fun nativeTranscriptAndMarkdown() {
         compose.setContent { LaliTheme {
             AppShell(ShellDestination.Conversations, {}, {}, title = "Weekend plans", connection = ConnectionStatus.Online) {

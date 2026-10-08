@@ -5,7 +5,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.*
 
 enum class MessageRole { User, Assistant }
-data class ChatMessage(val id: String, val role: MessageRole, val text: String, val thinking: String = "", val complete: Boolean = true)
+data class ChatMessage(val id: String, val role: MessageRole, val text: String, val thinking: String = "", val complete: Boolean = true, val sending: Boolean = false)
 data class ChatProjection(val messages: List<ChatMessage> = emptyList(), val busy: Boolean = false)
 
 @Serializable internal data class SnapshotEvent(val type: String, val view: SnapshotView)

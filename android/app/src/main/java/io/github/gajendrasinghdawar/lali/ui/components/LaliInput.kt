@@ -26,6 +26,7 @@ fun LaliInput(
         modifier = modifier,
         enabled = enabled,
         singleLine = singleLine,
+        maxLines = if (singleLine) 1 else 6,
         placeholder = placeholder?.let { { Text(it) } },
         shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
