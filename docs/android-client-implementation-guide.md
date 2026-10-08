@@ -1,686 +1,933 @@
-# Native Android client implementation guide
+# Native Android client: architecture and delivery guide
 
-## Purpose
+This is the source of truth for Android product scope and implementation order. Before changing Android code, read this document, `AGENTS.md`, `android/README.md`, and the Android CLI skill at `.agents/skills/android-cli/SKILL.md`.
 
-Build a native Android client for Lali. The Android app is a second authenticated client of the existing Express Gateway; it is not a replacement web app and it does not communicate with the model runtime directly.
+## Goal
 
-```text
-Android app
-  ├─ HTTPS commands and SSE timeline subscription
-  └─ no provider credentials, tools, or direct Agent access
+Build a native Jetpack Compose client that has the same product behavior and visual language as the web client while using Android-native navigation, accessibility, lifecycle, and adaptive-layout patterns.
 
-Express Gateway
-  ├─ authentication and authorization
-  ├─ sessions, runs, timeline events, effects, and integrations
-  └─ canonical state and SSE replay
-```
+“Identical” means:
 
-This guide favors a small, usable personal app over a generic Android platform. Implement one user-visible vertical slice at a time.
+- the same information hierarchy, colors, typography, spacing rhythm, message states, and actions;
+- the same Gateway-owned conversations, messages, tasks, approvals, and settings;
+- equivalent behavior for loading, streaming, reconnecting, failure, and empty states;
+- native Android controls and system behavior rather than a WebView or a literal port of DOM components.
 
-## Current Lali facts
-
-Before implementation, verify these facts against current source rather than assuming this guide is current:
-
-- the web client is React/Vite under `web/`;
-- the Backend is an Express MVC application under `src/` (using `controllers/`, `routes/`, and `services/`);
-- the Backend uses Better Auth with browser-oriented session cookies configured in `src/auth/auth.ts`;
-- browser chat uses HTTP commands and SSE (Server-Sent Events) exposed via the Express controllers;
-- the Backend owns session metadata, chat queueing, events, effects, email, and background jobs (via Inngest);
-- SSE resume, explicit runs, and embedded Pi runtime work are planned in `docs/embedded-pi-migration.md` and must not be bypassed by Android-specific behavior;
-- session behavior is specified in `docs/session-ui-ux-spec.md`.
-
-The Android app must consume shared Gateway contracts. Do not duplicate workflow logic, queueing, authorization, or effect execution in Kotlin.
-
-## Product boundary
-
-### Android app owns
-
-- Android navigation and rendering;
-- authenticated HTTP/SSE client connection;
-- local UI state and temporary drafts;
-- offline cache of safe session/timeline projections;
-- reconnect behavior and user-visible connection state;
-- Android notifications for Gateway-originated events when a later delivery contract exists.
-
-### Gateway owns
-
-- identity and authorization decisions;
-- session and run creation;
-- canonical event ordering and replay;
-- effects, approvals, idempotency, and integrations;
-- model/provider credentials;
-- durable history and recovery.
-
-## Android platform and agent-tooling baseline
-
-Use current **stable** Android and Kotlin releases when the project is started. Do not pin versions in this document: resolve them from official Android and Kotlin release notes on the day of implementation, record the chosen versions in the Gradle version catalog, and do not introduce alpha/beta/RC app dependencies without explicit approval.
-
-Use Google's Android CLI as the preferred terminal interface for coding agents when it is available on the development host. Android CLI provides structured commands for SDK setup, official project templates, emulators/devices, build/deploy, screenshots/layout inspection, Android documentation, skills, and Android Studio integration. It is currently published as a preview tool, so record the installed CLI version and keep the Gradle wrapper as the reproducible build authority.
-
-Do not confuse tooling stability with app dependency stability: using a preview Android CLI does not permit preview Compose, AndroidX, Kotlin, AGP, or platform APIs in the app.
-
-### Required platform choices
-
-| Concern | Choice |
-| --- | --- |
-| Language | Kotlin only |
-| UI | Jetpack Compose with Material 3 |
-| Architecture | UI → ViewModel/state holder → repository → Gateway client/local store |
-| Async | Kotlin coroutines and Flow |
-| Navigation | Use the current stable Android-recommended Compose navigation stack. Prefer Navigation 3 only when it is stable for the selected toolchain and the official Navigation 3 Android skill applies; otherwise use stable Navigation Compose with typed routes. Record the decision. |
-| HTTP | Ktor Client with an Android-supported engine and Kotlin serialization |
-| SSE | Ktor Client SSE plugin, subject to a small proof-of-connection spike against Lali's SSE endpoint |
-| Local database | Room for cached session/timeline projections |
-| Preferences/secrets | DataStore; Android Keystore-backed encrypted storage only for sensitive credential material |
-| Background deferrable work | WorkManager only for bounded retry/sync tasks, never an always-open SSE stream |
-| Images | No image library in the first chat/session slice unless an actual attachment preview requires one |
-| Dependency injection | Small manual `AppContainer` first. Add Hilt only if construction becomes repetitive across multiple screens. |
-
-### Android requirements
-
-- Choose a current supported `minSdk` deliberately. Record why it supports the intended devices and AndroidX dependencies.
-- Target the current stable Android SDK available at implementation time.
-- Use HTTPS in production. Cleartext HTTP is prohibited outside a debug-only emulator configuration.
-- A physical device must not use `localhost` for Gateway access. Provide a development base URL configuration; Android emulator access to a host Gateway normally uses `10.0.2.2`.
-- Never log access tokens, cookies, authorization headers, SSE payloads containing private data, or provider credentials.
-
-## Official agent workflow
-
-### Bootstrap and inspect the environment
-
-Before creating or editing the Android project, the coding agent must inspect the locally installed Android CLI rather than assuming commands or SDKs exist:
+The Android app is a client of the Express Gateway. It must never connect directly to an AI provider or duplicate agent workflow logic.
 
 ```text
-android update
-android info
-android sdk list
-android skills list
+Compose UI
+  -> screen ViewModel
+  -> repository
+  -> Ktor HTTP/SSE + local storage
+  -> Express Gateway
+  -> Pi-Durable
 ```
 
-Because Android CLI is a preview and its commands may evolve, run `android help` or the command-specific help before automation. Install only the SDK components required by the selected stable compile/target SDK and emulator image. Do not silently upgrade an existing project toolchain during an unrelated feature slice.
+## Recommended approach
 
-### Create the project from an official template
+Build vertical slices in this order:
 
-For Demo 0, prefer `android create` and an official Compose template over hand-writing Gradle files. Before running it:
+1. secure native authentication;
+2. exact theme and app shell;
+3. conversation list and navigation;
+4. read-only transcript plus live SSE snapshots;
+5. send and stream one response;
+6. thinking, tool activity, effects, and forks;
+7. tasks and settings;
+8. caching and reconnect recovery;
+9. Android-only features such as notifications, share targets, voice input, and shortcuts.
 
-1. inspect `android create --help` and available templates;
-2. select Kotlin, Compose, Material 3, and a single app module;
-3. create the project under `android/`;
-4. record the generated AGP, Kotlin, Gradle, compile SDK, target SDK, and minimum SDK choices;
-5. inspect the generated project before adding architecture or dependencies.
+Do not build every screen before the transport works. Each slice must compile, have a focused automated test, run on an emulator, and have a visually inspected screenshot.
 
-If Android CLI is unavailable on the host, use Android Studio's current official New Project Compose template and record that fallback. Do not copy a stale project skeleton from a tutorial.
+## Current repository audit
 
-### Ground the agent with Android Knowledge Base
+### Toolchain
 
-Use Android CLI's Android Knowledge Base before making API or migration choices:
+The project under `android/` already exists and builds. Its recorded baseline is:
 
-```text
-android docs search "<specific Android question>"
-android docs fetch "<selected result>"
+| Concern              | Current choice                                        |
+| -------------------- | ----------------------------------------------------- |
+| UI                   | Jetpack Compose + Material 3                          |
+| Navigation           | Navigation 3                                          |
+| HTTP                 | Ktor Client Android engine                            |
+| State                | Coroutines and `StateFlow`                            |
+| Dependency injection | Manual `AppContainer`                                 |
+| Min SDK              | 24                                                    |
+| Compile/target SDK   | 37                                                    |
+| App module           | One `:app` module                                     |
+| Android CLI          | Installed; version is reported by `android --version` |
+
+Do not copy these versions into another file. `android/gradle/libs.versions.toml`, the Gradle wrapper, and `android/README.md` are authoritative.
+
+The local Android CLI currently sees `Medium_Phone_API_36.1`. The local Gradle build requires Android Studio’s JBR. In Git Bash:
+
+```bash
+export JAVA_HOME='/c/Program Files/Android/Android Studio1/jbr'
+export PATH="$JAVA_HOME/bin:$PATH"
+cd android
+./gradlew.bat testDebugUnitTest lintDebug --console=plain
 ```
 
-Search for the concrete task, for example:
+The baseline unit tests and Android lint pass with that JDK. Connected tests were not part of this documentation pass.
 
-```text
-current stable Compose edge-to-edge setup
-Navigation 3 typed routes stable setup
-collect StateFlow lifecycle-aware Compose
-Room transactional upsert and cursor update
-Android App Links verification
-Credential Manager browser sign-in handoff
-WorkManager constraints and retry
-```
+### Implemented Android behavior
 
-The search result is evidence, not an instruction to adopt a preview API. Confirm release stability and inspect the installed dependency API before coding.
+The Android app currently has:
 
-### Install and use official Android skills
+- a single `MainActivity` with edge-to-edge enabled;
+- Navigation 3 keys for `SignIn` and `Home`;
+- a manual dependency container;
+- a Ktor health request;
+- a browser intent for web sign-in;
+- a custom `saul://auth` callback;
+- a placeholder authenticated home screen;
+- basic unit and Compose UI tests.
 
-Android skills are task-specific `SKILL.md` instructions maintained to ground agents in current Android practices. Manage them through Android CLI:
+It does not yet have conversations, chat, SSE, markdown, tasks, settings, caching, attachments, approvals, or notifications.
 
-```text
-android skills find <topic>
-android skills add <skill-name>
-android skills update <skill-name>
-```
+### Blocking problems in the current scaffold
 
-Install only skills relevant to the current ticket. At minimum, discover official skills when a slice involves:
+Resolve these before treating authentication as complete:
 
-- Navigation 3 setup or migration;
-- edge-to-edge UI;
-- AGP 9 migration;
-- XML-to-Compose migration;
-- R8 configuration analysis.
+1. `MainActivity` logs the token. Credentials must never appear in logs.
+2. `TokenRepository` stores the token as plaintext in `SharedPreferences`.
+3. A bearer token is placed in a custom-scheme URL. Any app can register the same custom scheme, so this is vulnerable to interception.
+4. The web app cannot safely extract an HttpOnly Better Auth session cookie and pass it to Android.
+5. The server does not currently install Better Auth’s bearer plugin. `createAuthGuard()` therefore only has a proven browser-cookie path.
+6. Chat POST requests require cookie-bound double-submit CSRF. A native bearer client needs an explicit server policy rather than pretending to be a browser.
+7. `rememberNavBackStack(startDestination)` does not replace the remembered stack when authentication changes. Authentication must drive the root graph explicitly.
+8. The browser login URL is hard-coded to `10.0.2.2:5173` instead of using build configuration.
+9. The Android theme uses warm terracotta colors, while the current web app uses dark slate surfaces with crimson, jade, amber, and red accents.
+10. `src/controllers/chat.ts` currently logs request bodies and settled results. Remove these debug logs before mobile testing with private conversations.
 
-An installed skill must be read and followed for its matching task. Do not install every skill into context, and do not customize an official skill in place because a later `android skills add` can overwrite it. If Lali eventually needs a project-specific Android workflow, create a separately named skill under a supported project skill directory and keep detailed material in its `references/`, `scripts/`, or `assets/` subdirectories.
+Treat `docs/specs/001-android-auth-flow.md` as the focused auth requirements document. Finalize its Better Auth plugin and endpoint details before implementation.
 
-### Build, run, and inspect every slice
+## Actual web and Gateway capability matrix
 
-Use the structured CLI loop where supported:
+This matrix separates visible web features from server-ready contracts. Android parity can only use behavior the Gateway actually supports.
 
-```text
-android run
-android layout
-android screen capture
-android screen resolve
-```
+| Capability                    | Web        | Gateway today                           | Android priority    |
+| ----------------------------- | ---------- | --------------------------------------- | ------------------- |
+| Email/password account flows  | Yes        | Better Auth routes                      | Auth browser flow   |
+| Session-cookie authentication | Yes        | Yes                                     | Browser only        |
+| Native bearer authentication  | No         | Not configured                          | Blocker             |
+| Conversation list             | Yes        | `GET /api/conversations`                | P1                  |
+| Create conversation           | Yes        | `POST /api/new-thread`                  | P1                  |
+| Rename conversation           | Yes        | `PATCH /api/conversations/:id`          | P1                  |
+| Delete conversation           | Yes        | `DELETE /api/conversations/:id`         | P1                  |
+| Fork from message             | Yes        | `POST /api/fork/:messageId`             | P2                  |
+| Initial transcript            | Yes        | Initial event from `GET /api/stream`    | P1                  |
+| Live text/thinking            | Yes        | Full Pi-Durable view snapshots over SSE | P1                  |
+| Send/steer                    | Yes        | `POST /api/chat`, `whenBusy`            | P1                  |
+| Stop generation               | UI only    | Web handler is still a TODO             | Blocked             |
+| Tool activity                 | Yes        | Derived from Pi entries/live state      | P2                  |
+| Approval UI                   | Yes        | Approval routes exist                   | P2                  |
+| Task list/abort               | Yes        | `/api/tasks` routes exist               | P2                  |
+| Secrets/settings              | Yes        | `/api/secrets` routes exist             | P3, sensitive       |
+| Attachments                   | UI present | `/api/artifacts` is not mounted         | Blocked             |
+| Offline cache                 | No         | No sync protocol                        | Android enhancement |
+| Background notifications      | No         | No push contract                        | Future backend work |
 
-The exact options and device-selection arguments must come from current command help. The agent should use these tools to produce visible proof for each demo, not stop after compilation.
+Do not advertise Stop, attachments, replay-safe offline sending, or push notifications in Android until their server contracts exist.
 
-Use Android Studio integration when deeper semantic or visual inspection is needed:
+## Product naming decision
 
-```text
-android studio check
-android studio analyze-file
-android studio find-declaration
-android studio find-usages
-android studio render-compose-preview
-android studio version-lookup
-```
+The repository and user-facing terminology currently mix **Saul** and **Lali**:
 
-Do not use an agent as a substitute for Android Studio's profiler, debugger, Layout Inspector, accessibility checks, or release analysis. Open the generated CLI project in Android Studio for visual refinement, profiling, and final production validation.
+- repository and deep-link scheme: Saul;
+- Android application/package strings and web brand: Lali.
 
-### Validate user journeys
-
-For completed vertical slices, add an Android CLI Journey where the tooling supports it. A Journey describes a user-visible path in natural language and runs it on a device/emulator. It complements, but does not replace, unit, integration, and Compose tests.
-
-Example first journey:
-
-```text
-Launch Lali.
-Verify the sign-in screen is visible.
-Tap Sign in.
-Verify the browser authentication handoff begins.
-Return to Lali after successful authentication.
-Verify the authenticated app shell is visible.
-```
-
-Keep journeys deterministic: use a controlled test Gateway/account, avoid real provider/effect calls, and capture failure screenshots or layout state.
-
-## References to consult before coding
-
-Use primary documentation, Android Knowledge Base results, official Android skills, and installed library APIs—not copied blog-post snippets:
-
-- Android agent tools and Android CLI: `https://developer.android.com/tools/agents`
-- Android skills: `https://developer.android.com/tools/agents/android-skills`
-- Android CLI Journeys: `https://developer.android.com/tools/agents/android-cli/journeys`
-- Android architecture recommendations: `https://developer.android.com/topic/architecture/recommendations`
-- Compose architecture: `https://developer.android.com/develop/ui/compose/architecture`
-- Offline-first data layer: `https://developer.android.com/topic/architecture/data-layer/offline-first`
-- DataStore: `https://developer.android.com/topic/libraries/architecture/datastore`
-- WorkManager: `https://developer.android.com/topic/libraries/architecture/workmanager`
-- Credential Manager: `https://developer.android.com/identity/credential-manager`
-- Ktor Client SSE: `https://ktor.io/docs/client-server-sent-events.html`
-
-Read the current official pages and inspect dependency types in Gradle caches before choosing APIs.
-
-## Authentication is a blocking design decision
-
-The current Gateway authentication configuration is browser-oriented: Email/Password login plus Better Auth session cookies and trusted web origins. A native app cannot safely pretend to be the web browser or share a browser cookie jar as its durable identity mechanism.
-
-Do not begin a production Android chat implementation until the Gateway has an explicit native-client authentication contract.
-
-### Recommended first native auth model: browser sign-in plus device token
-
-Use a device-link flow rather than embedding a traditional cookie manager in the app.
-
-```text
-Android app requests a one-time pairing challenge from Gateway
-→ app opens the Gateway login/approval page in an Android Custom Tab
-→ owner signs in through existing Email/Password Better Auth flow
-→ Gateway confirms the pairing and issues a scoped device token
-→ app receives a deep-link callback or polls the pairing status
-→ app stores only the device token in Keystore-backed storage
-→ every API/SSE request authenticates as that device/user
-```
-
-The exact Better Auth integration must be researched before implementation. Do not invent token formats, redirects, or cookie transfer mechanisms.
-
-### Minimum Gateway auth requirements
-
-- short-lived pairing challenge with expiry and single use;
-- explicit user/device approval and revocation;
-- a token scoped to the authenticated Lali user/device;
-- `Authorization` handling for HTTP and SSE;
-- no token in URL query parameters, logs, timeline events, or notifications;
-- Gateway endpoint to revoke/list paired devices later;
-- Android App Link callback validation, including state/nonce validation if the design uses redirect callbacks.
-
-### First auth demo
-
-```text
-Launch app
-→ tap Sign in
-→ complete Gateway-owned browser sign-in
-→ return to Android app
-→ app calls GET /api/me successfully
-→ Sign out revokes local credentials and returns to sign-in screen
-```
-
-This is a Gateway/API ticket before it is an Android feature ticket.
-
-## App structure
-
-Generate the initial project with Android CLI's current official Compose template as described above, then preserve that template's working build while adding only the files required by the current demo. Keep the Android project in a clearly isolated root directory:
-
-```text
-android/
-  app/
-    src/main/
-      AndroidManifest.xml
-      java/.../lali/
-        LaliApplication.kt
-        AppContainer.kt
-        core/
-          network/
-          auth/
-          database/
-          model/
-        data/
-          sessions/
-          timeline/
-          auth/
-        feature/
-          signin/
-          sessions/
-          chat/
-          settings/
-        ui/
-          theme/
-          components/
-          navigation/
-      res/
-```
-
-Keep feature code close to its screen. Keep protocol/data conversion at the data boundary, not inside composables.
-
-### Module policy
-
-Start with one `:app` module. Do not create feature Gradle modules, a design-system module, or a generic SDK before Android build time or ownership makes them necessary.
+Choose one product name before polishing icons, accessibility labels, App Links, package metadata, and Play Store assets. Until that decision, match the current web-visible name, **Saul**, and avoid adding more naming variants.
 
 ## Architecture
 
-Follow unidirectional data flow:
+### Keep one app module initially
+
+Use one `:app` Gradle module until build time or ownership becomes a real problem. Organize packages by responsibility:
 
 ```text
-Gateway HTTP/SSE + Room
-        ↓
-Repository exposes Flow<ScreenData>
-        ↓
-ViewModel transforms it into immutable UiState
-        ↓
-Composable renders UiState and emits user actions
-        ↓
-ViewModel invokes repository command
+io.github.gajendrasinghdawar.saul/
+  app/
+    AppContainer.kt
+    LaliApplication.kt
+    MainActivity.kt
+    navigation/
+  core/
+    auth/
+    database/
+    design/
+    markdown/
+    model/
+    network/
+  data/
+    auth/
+    conversations/
+    chat/
+    tasks/
+    settings/
+  feature/
+    signin/
+    conversations/
+    chat/
+    tasks/
+    settings/
+  ui/
+    components/
+    theme/
 ```
 
-### Rules
+Do not introduce feature Gradle modules, Hilt, or a generic “clean architecture” use-case layer preemptively. Manual constructor injection is sufficient until navigation-scoped ViewModels or WorkManager construction becomes repetitive.
 
-- Composables do not call Ktor, Room, DataStore, or Gateway endpoints.
-- ViewModels expose one immutable screen `UiState` and process explicit actions.
-- Repositories are the single source of truth for the data they own.
-- Cache Gateway projections locally; do not treat Room as authority over Gateway state.
-- Map network DTOs to app domain models at the repository boundary.
-- Do not expose Gateway JSON directly throughout UI.
-- Use `SavedStateHandle` only for small navigation/screen restoration values, not whole transcripts.
+### Layer rules
 
-### Example state shape
+- Composables receive immutable state and emit callbacks.
+- Screen ViewModels expose one `StateFlow<UiState>` and accept explicit actions.
+- ViewModels call repositories, never Ktor, Room, DataStore, or Android framework storage directly.
+- Repositories own reconciliation between network and local data.
+- Network DTOs stay in the network/data layer.
+- Domain/UI models use sealed interfaces and data classes, never `Map<String, Any>`.
+- The Gateway remains authoritative. A local database is a projection/cache, not a second conversation engine.
+- Collect flows with `collectAsStateWithLifecycle()`.
+- Use stable durable IDs as `LazyColumn` item keys.
+
+This follows the official Android architecture guidance: a clear data layer, repositories, unidirectional data flow, screen-level ViewModels, coroutines/Flow, lifecycle-aware collection, and a single activity.
+
+### Suggested interfaces
+
+```kotlin
+interface AuthRepository {
+  val session: StateFlow<AuthSession?>
+  suspend fun beginSignIn(): SignInChallenge
+  suspend fun completeSignIn(result: AuthResult)
+  suspend fun signOut()
+}
+
+interface ConversationRepository {
+  fun conversations(): Flow<List<ConversationSummary>>
+  suspend fun refresh()
+  suspend fun create(): ConversationId
+  suspend fun rename(id: ConversationId, title: String)
+  suspend fun delete(id: ConversationId)
+}
+
+interface ChatRepository {
+  fun conversation(id: ConversationId): Flow<ConversationState>
+  suspend fun connect(id: ConversationId)
+  suspend fun disconnect(id: ConversationId)
+  suspend fun send(id: ConversationId, text: String, requestId: String)
+  suspend fun fork(messageId: MessageId): ConversationId
+}
+```
+
+These interfaces describe behavior, not transport. Implement them only as each vertical slice needs them.
+
+## Authentication design
+
+Authentication is the first backend-and-Android slice.
+
+### Recommended flow
+
+Use a browser-owned sign-in plus a one-time device authorization exchange. The installed Better Auth version contains `deviceAuthorization` and `bearer` plugins, but the project has configured neither. Verify their current official documentation and installed types before implementation.
+
+Preferred trace:
+
+```text
+Android requests a short-lived device challenge
+-> Android opens the Gateway verification URL in a Custom Tab
+-> user signs in using the existing web flow
+-> authenticated web page approves the displayed device/user code
+-> Android polls the token endpoint at the server-provided interval
+-> Gateway returns a scoped bearer/session token once
+-> Android encrypts it with an Android Keystore key
+-> Ktor adds Authorization: Bearer ... to API and SSE requests
+```
+
+Use the standard device-authorization plugin if it satisfies these properties. Otherwise implement an equivalent one-time-code exchange. Do not put a session or bearer token in a callback URL.
+
+### Server work required
+
+- install and configure a reviewed native token mechanism;
+- make `createAuthGuard()` accept the validated native identity;
+- define whether bearer-authenticated unsafe methods bypass browser CSRF or use another anti-replay rule;
+- add device/session listing and revocation before broad distribution;
+- return consistent `401` versus `403` errors;
+- test HTTP and SSE with the same bearer identity;
+- ensure tokens, authorization headers, and auth payloads are redacted from logs.
+
+### Android storage
+
+Replace plaintext `SharedPreferences` with:
+
+- an AES key generated in `AndroidKeyStore`;
+- encrypted token bytes in private app storage or DataStore;
+- no backup for bearer material unless a deliberate credential restore design exists;
+- complete token and user-cache removal on sign-out or unauthorized response.
+
+The Keystore protects key material from extraction; perform cryptographic operations off the main thread. StrongBox is optional, not a baseline requirement.
+
+### App Links
+
+Use a verified HTTPS Android App Link (`android:autoVerify="true"`) for any production callback. Custom schemes are acceptable only for a clearly marked local debug build. Validate scheme, host, path, state, expiry, and one-time code before changing auth state.
+
+## Gateway contract strategy
+
+### First release: consume the current snapshot stream
+
+The current `GET /api/stream?conversationId=...` endpoint sends:
+
+```text
+data: { "type": "init", "view": <Pi Durable view> }
+
+data: { "type": "update", "view": <Pi Durable view> }
+```
+
+Each update is a complete current projection, not a token delta. Android must rebuild or diff its immutable UI projection from that snapshot. It must not append the entire partial response to the previous partial response, or text will duplicate.
+
+The mapper must match `web/src/features/chat/chat-view.ts`:
+
+- `pi.user` becomes a user message;
+- consecutive `pi.assistant` entries and tool results form the assistant turn;
+- `text` parts become visible answer text;
+- `thinking` parts become expandable thinking content;
+- `toolCall` parts become activity items;
+- `docs["pi.live"].run` is the authoritative busy state;
+- `docs["pi.live"].generation.message` is the current partial assistant response;
+- when live state disappears and the assistant entry is committed, render one completed message, not both versions.
+
+Create shared JSON fixtures captured from sanitized Gateway views. Run the same cases through the web mapper and Android mapper. Required fixtures:
+
+1. user message only;
+2. live thinking only;
+3. live text growing across snapshots;
+4. tool call, running result, and final answer;
+5. completed response replacing its live version;
+6. malformed/unknown content part;
+7. unauthorized and disconnected stream.
+
+### Current SSE limitations
+
+The endpoint currently has no event IDs, replay cursor, explicit heartbeat, or typed stable public schema. Therefore:
+
+- reconnect by requesting a fresh complete snapshot;
+- never resend a user command merely because SSE reconnects;
+- keep one SSE connection only while the chat destination is started/visible;
+- use bounded exponential backoff with jitter for transient failures;
+- stop retries on `401` and return to re-authentication;
+- treat malformed snapshots as an error and retain the last valid UI state.
+
+Do not use WorkManager to hold an SSE connection. WorkManager is for bounded deferrable work, not a permanent foreground stream.
+
+### Contract hardening before offline-first chat
+
+Before durable offline history or background notifications, add a versioned client-neutral contract. At minimum it needs:
+
+- an explicit schema version;
+- stable DTOs independent of Pi-Durable internals;
+- event identity or snapshot generation;
+- history/live handoff without a race;
+- reconnect/replay semantics;
+- idempotency key acceptance for message submission;
+- cancellation semantics and terminal run status;
+- attachment upload limits and metadata.
+
+Keep contract fixtures in the repository and test both TypeScript serialization and Kotlin decoding. Avoid maintaining unrelated hand-written interpretations in two clients.
+
+## Network implementation
+
+Add dependencies only when their slice begins:
+
+- Ktor Content Negotiation + Kotlin serialization for JSON;
+- Ktor SSE for the chat stream;
+- a redacting logger only in debug, or no HTTP body/header logger;
+- AndroidX DataStore for non-secret preferences and drafts;
+- Room when cached conversations/transcripts are implemented;
+- Custom Tabs for browser auth.
+
+Configure one application-scoped `HttpClient` with:
+
+- base URL from `BuildConfig`;
+- bearer injection from `AuthRepository`;
+- connect/request/socket timeouts appropriate to normal requests;
+- a separate long-lived SSE request policy;
+- JSON that rejects or safely ignores unknown fields according to the versioning policy;
+- response mapping for unauthorized, forbidden, rate limited, server, and connectivity errors.
+
+Do not catch only `IOException`: Ktor failures and serialization failures need deliberate mapping. Do not log request bodies, cookies, bearer headers, thinking text, or private transcript content.
+
+For local development:
+
+- emulator to host: `http://10.0.2.2:3000`;
+- physical USB device: `adb reverse tcp:3000 tcp:3000`, then use `http://localhost:3000`;
+- production: HTTPS only;
+- cleartext exceptions remain debug-only.
+
+## Navigation and adaptive shell
+
+Keep Navigation 3. Use serializable `NavKey` values and a saveable back stack. Model authentication as two root flows:
+
+```text
+Unauthenticated: SignIn
+Authenticated: ConversationList -> Chat(id), Tasks, Settings
+```
+
+When auth changes, replace the root flow rather than expecting a remembered start destination to change.
+
+### Phone
+
+- top app bar with Lali identity and current destination;
+- modal navigation drawer for New chat, Tasks, Settings, account, and conversations;
+- chat occupies the full screen;
+- back from chat returns to the conversation list/drawer selection behavior defined by the navigation graph;
+- composer respects IME and navigation-bar insets.
+
+### Wide window/tablet/foldable
+
+Use an adaptive list-detail layout:
+
+- conversation list/navigation pane on the left;
+- selected chat detail on the right;
+- Tasks and Settings remain top-level destinations;
+- preserve selected conversation and draft across window-size changes.
+
+Do not hardcode “phone/tablet” from device type or orientation. Adapt to available window size. Navigation 3’s list-detail scene or Material adaptive `NavigableListDetailPaneScaffold` are valid options; prototype both against the current stable dependencies before choosing one.
+
+## Exact design-system parity
+
+The repository rule requires Android to be visually identical to web. The web source of truth is:
+
+- colors: `web/src/styles/theme.css`;
+- typography: `web/src/styles/typography.css`;
+- global surfaces and behavior: `web/src/styles/global.css`;
+- message composition: `web/src/components/message.tsx`;
+- chat rows: `web/src/features/chat/`;
+- shell/sidebar: `web/src/components/ui/sidebar/` and `SessionSidebar.tsx`.
+
+The current Android warm terracotta theme must be replaced. Start dark-only because the current web root declares a dark color scheme. Add light mode only when the web app has an equivalent approved light palette.
+
+Create Compose tokens with the same semantic names and values, for example:
+
+| Web token                  | Use in Android                      |
+| -------------------------- | ----------------------------------- |
+| `slate2` `hsl(220 6% 10%)` | app/background surface              |
+| `slate3` `hsl(225 6% 14%)` | elevated field/card surface         |
+| `slate4`–`slate7`          | selected, hover-equivalent, borders |
+| `slate10`                  | secondary labels                    |
+| `slate11`                  | body text                           |
+| `slate12`                  | high-emphasis text                  |
+| `crimson9`–`crimson11`     | brand and primary emphasis          |
+| `jade9`–`jade11`           | connected/running/success           |
+| `amber9`–`amber11`         | warning/pending                     |
+| `red9`–`red11`             | destructive/error                   |
+
+Keep raw palette values in one Kotlin file and expose semantic `ColorScheme`/component tokens from another. Do not scatter color literals through feature code.
+
+Use Noto Sans on Android to match web. Bundle the required weights so appearance is deterministic offline. Mirror web measurements intentionally:
+
+- content width equivalent to web `max-w-4xl` on wide screens;
+- composer narrower than the transcript on wide screens;
+- user bubble up to roughly 85% width;
+- assistant content flat/full-width rather than a large colored bubble;
+- 8dp/12dp/16dp spacing rhythm;
+- subtle one-pixel slate borders;
+- restrained corner radius and shadow;
+- crimson brand accent, jade live status, amber pending state;
+- reduced motion respected.
+
+Maintain a parity gallery containing the same fixture states in web and Compose previews:
+
+- empty chat;
+- short user/assistant exchange;
+- long Markdown answer;
+- table wider than phone viewport;
+- fenced code block;
+- streaming thinking;
+- tool activity;
+- approval card;
+- reconnecting and failed states;
+- long titles and large font scale.
+
+Capture screenshots at phone and wide-window dimensions. Compare hierarchy, wrapping, spacing, color, and action placement. Pixel identity is not required where Android system controls differ; semantic and visual identity is.
+
+## Native message and Markdown rendering
+
+Do not use a WebView merely to reuse Streamdown. Build a native Compose message list:
+
+```text
+LazyColumn
+  UserMessage
+  AssistantMessage
+    ThinkingDisclosure
+    MarkdownContent
+    ToolActivity
+    ApprovalCard
+    MessageActions
+```
+
+Requirements:
+
+- stable key per durable message/entry;
+- one assistant row updated as partial content grows;
+- `contentType` per row type for efficient reuse;
+- auto-scroll only if the user is already near the bottom;
+- a “new messages” affordance when the user is reading older content;
+- thinking expanded while active and collapsed when complete;
+- no TalkBack announcement per token; announce state changes such as “response complete”;
+- copy, select, share, and fork actions;
+- horizontal scrolling for wide tables and code, never whole-screen overflow.
+
+Compose has no official Streamdown equivalent. Before choosing a Markdown library, run a small spike against Saul’s real fixtures. Candidate libraries must provide native Compose rendering, incremental updates without duplicating prior blocks, GFM tables, fenced code, links, selection, accessibility semantics, dark-theme customization, and an acceptable license. Current candidates found during research include `ComposeMarkdownMultiplatform`, `compose-markdown`, and `multiplatform-markdown-renderer`; none is approved by this guide. Inspect current source, release activity, transitive dependencies, and API types before selection. use https://github.com/mikepenz/multiplatform-markdown-renderer
+
+If no candidate passes, implement the limited syntax Saul actually emits rather than importing a large browser engine. Keep parsing outside composables and expose an immutable Markdown block model.
+
+## Screen behavior
+
+### Conversation list
+
+- sort by server `updated` descending, matching web;
+- always expose Main Thread;
+- create, rename, delete, and select;
+- confirm destructive deletion;
+- preserve selected conversation on wide layouts;
+- show loading, empty, stale-cache, unauthorized, and retry states.
+
+### Chat
+
+Recommended `ChatUiState`:
 
 ```kotlin
 data class ChatUiState(
-    val sessionId: String,
-    val messages: List<ChatItem>,
-    val composerText: String,
-    val connection: ConnectionState,
-    val runState: RunState?,
-    val isLoadingHistory: Boolean,
-    val error: UserVisibleError?
+  val conversationId: String,
+  val items: List<ChatItem>,
+  val draft: String,
+  val connection: ConnectionState,
+  val run: RunState?,
+  val isInitialLoading: Boolean,
+  val error: UserVisibleError?,
 )
 ```
 
-Use concrete sealed types for `ConnectionState`, `RunState`, message rows, and user-visible errors. Do not use `Map<String, Any>` or untyped JSON as UI state.
+Composer behavior:
 
-## Shared Gateway contract requirements
+- multiline input;
+- IME Send sends; Shift+Enter/hardware behavior is tested;
+- retain draft on failed submission;
+- optimistic user row reconciles with canonical state by request/idempotency key, not only matching text;
+- show connection/generation status with the same meaning and colors as web;
+- attachment and Stop buttons appear only when their server behavior exists.
 
-Android must not ship a separate interpretation of history and live output. Before the Android chat slice, the Gateway must expose a stable contract shared by web and Android.
+### Tasks and approvals
 
-### Session list
+- tasks use typed state, not raw JSON in the primary UI;
+- raw checkpoint details may be expandable debug information;
+- approval cards explain the action before Approve/Reject;
+- Android sends the decision, while the Gateway executes the effect;
+- destructive or costly approvals may require device authentication later.
 
-```text
-GET /api/sessions?status=active|archived|all
-```
+### Settings
 
-Return typed session projections, including session ID, title, archive status, last update time, active-run status, and timeline generation.
+The web settings screen manages server secrets. This is high-risk functionality on mobile. Implement it after chat parity, with:
 
-### History and live events
+- masked values;
+- no secret values in screenshots, recents, clipboard by default, logs, or accessibility announcements;
+- explicit confirmation and re-authentication for destructive changes;
+- admin authorization enforced by the Gateway, not hidden buttons alone.
 
-```text
-GET /api/chat/events?sessionId=<id>&after=<sequence>
-Last-Event-ID: <sequence>
+## Offline and lifecycle policy
 
-SSE:
-id: <sequence>
-event: timeline
-data: { sessionId, runId, sequence, type, occurredAt, payload }
-```
+Start online-first. Add Room only after the canonical online chat slice is correct.
 
-The Gateway must:
+When caching is added:
 
-1. authenticate every subscription;
-2. authorize access to the requested session;
-3. replay events after the cursor in sequence order;
-4. subscribe without a history/live race;
-5. send heartbeats;
-6. allow more than one subscriber;
-7. retain a canonical event/timeline-generation boundary after reset.
+- Room is the UI’s observable local source for conversation/timeline projections;
+- Gateway snapshots update Room transactionally;
+- scope all rows by authenticated user;
+- clear sensitive cache at sign-out;
+- preserve per-conversation drafts in DataStore or Room;
+- mark stale content honestly;
+- message sending remains online-only until the Gateway has idempotency and an explicit offline queue contract.
 
-Android stores the largest processed sequence for each `(sessionId, timelineGeneration)` and ignores duplicates. A Gap, invalid JSON, or generation mismatch causes a history refresh rather than local guesswork.
-
-### Commands
-
-Use ordinary authenticated HTTP requests for commands. At minimum:
-
-```text
-POST   /api/sessions/start
-POST   /api/chat
-POST   /api/runs/:runId/cancel
-PATCH  /api/sessions/:id          # rename
-PUT    /api/sessions/:id/archive
-PUT    /api/sessions/:id/restore
-POST   /api/sessions/:id/reset
-DELETE /api/sessions/:id
-POST   /api/sessions/:id/fork
-```
-
-Do not add Android-only endpoints when a client-neutral Gateway command is correct.
-
-## Screens and demos
-
-Build demos in order. Each demo must be usable on a physical Android device or emulator and include automated tests for its principal failure case.
-
-### Demo 0: app shell
+SSE lifecycle:
 
 ```text
-Use Android CLI's official Compose template
-→ launch app through android run
-→ Material 3 theme renders edge to edge
-→ Sign in placeholder or configuration screen appears
-→ configuration can target debug Gateway safely
-→ capture and inspect the screen/layout
+Chat destination STARTED
+-> open stream
+-> parse snapshot
+-> commit projection
+-> update StateFlow
+
+Destination stopped
+-> close stream
+
+Destination started again
+-> reconnect and receive a fresh snapshot
 ```
 
-No chat, fake model, or local business logic. This verifies the generated Gradle project, Compose, navigation, edge-to-edge layout, and debug networking. Install and follow the official edge-to-edge skill for this slice if it is available. Preserve system-bar contrast, display-cutout behavior, keyboard insets, and TalkBack semantics rather than merely drawing content behind system bars.
+Do not keep SSE alive from WorkManager or an unbounded foreground service. Future background alerts require a separate push-notification contract, normally FCM plus a server-side device registration/revocation model.
 
-### Demo 1: authenticated session list
+## Delivery plan
+
+### Slice 0 — stabilize the scaffold
+
+Deliver:
+
+- remove token logging;
+- replace plaintext token persistence;
+- make browser URLs configurable;
+- correct auth-driven root navigation;
+- rename packages/files only if the product naming decision requires it;
+- add deterministic fake repositories for previews/tests.
+
+Done when unit tests, lint, connected sign-in UI tests, layout inspection, and a screenshot pass.
+
+### Slice 1 — native auth contract
+
+Deliver the reviewed device authorization/bearer server contract and Android client. Do not proceed with protected API work until `GET /api/auth/get-session`, conversation list, and SSE all authenticate from Android.
+
+Done when sign-in, process restart, expired token, sign-out, revocation, and malicious callback tests pass without a token appearing in logs or URLs.
+
+### Slice 2 — design system and adaptive shell
+
+Translate web tokens and build reusable Compose primitives: app surface, brand mark, navigation item, button variants, dialog, status dot, input, message action, and responsive shell.
+
+Done when fixture screenshots match the web hierarchy on a phone and a wide emulator and accessibility checks pass.
+
+### Slice 3 — conversations
+
+Implement list/create/rename/delete and Navigation 3 destinations with fake-first repository tests, then real Gateway wiring.
+
+Done when refresh and all mutations reconcile with server state and a device journey passes.
+
+### Slice 4 — read-only chat stream
+
+Add Kotlin serialization DTOs, Ktor SSE, the Pi snapshot mapper, and the Compose message list. Use sanitized snapshots in unit tests before opening a real stream.
+
+Done when a message sent from web appears once on Android, including incremental thinking and text.
+
+### Slice 5 — sending
+
+Add draft state, optimistic submission, server reconciliation, busy/steer behavior, error recovery, and scroll anchoring.
+
+Done when both HTTP-before-SSE and SSE-before-HTTP orderings produce one user message and one assistant response.
+
+### Slice 6 — parity actions
+
+Add forks, tool activity, approvals, task list/abort, and account menu. Add settings only after authorization is explicit.
+
+Done when each action is confirmed by canonical server state, not only optimistic UI.
+
+### Slice 7 — cache and resilience
+
+Add Room, stale-state UI, reconnect backoff, process-death restoration, and per-conversation drafts.
+
+Done when airplane-mode and Gateway-restart journeys retain readable history without duplicate messages or command replay.
+
+### Slice 8 — server-enabled missing features
+
+Implement cancellation and attachments only after backend contracts and tests exist.
+
+### Slice 9 — Android advantages
+
+Prioritize based on actual use:
+
+- share text/files into a selected conversation;
+- notification deep links for scheduled briefings and completed long runs;
+- voice input through Android system speech UI;
+- app shortcuts for Main Thread and New chat;
+- biometric app lock for local privacy;
+- offline conversation search;
+- App Functions for safe, narrowly scoped actions;
+- tablet/foldable two-pane productivity UI.
+
+Each feature must use Gateway authorization and must not expose arbitrary agent execution through an unauthenticated Android surface.
+
+## Agentic Android development loop
+
+### 1. Orient
+
+From the repository root:
+
+```bash
+android --version
+android info
+android sdk list
+android skills list
+android describe --project_dir=android
+```
+
+On this Windows machine, set `JAVA_HOME` before commands that invoke Gradle. Do not run several first-time `android docs` searches concurrently: index initialization uses a filesystem lock.
+
+For a new task, search official docs and discover a matching skill:
+
+```bash
+android docs search "specific API or behavior"
+android docs fetch "kb://selected/result"
+android skills find <topic>
+```
+
+Relevant skills currently available include `navigation-3`, `adaptive`, `edge-to-edge`, `testing-setup`, `android-intent-security`, and `appfunctions`. Install/read only the skill required by the active slice.
+
+### 2. Define one user trace
+
+Write the success path and one principal failure path before coding. Example:
 
 ```text
-Sign in
-→ app loads active sessions
-→ tap a session
-→ opens a placeholder chat screen for that session
-→ pull-to-refresh updates the list
+Open conversation
+-> initial cached/snapshot content appears
+-> Gateway streams a growing assistant response
+-> one assistant row updates in place
+-> final snapshot marks it complete
+
+Failure: disconnect halfway
+-> existing text remains
+-> status becomes Reconnecting
+-> fresh snapshot replaces partial state without duplication
 ```
 
-Phone layout: `NavigationBar` with Chats, Mail, Notifications, Settings only if those endpoints are ready. Do not add disabled destinations merely to mimic the web UI.
+Turn the trace into a unit/integration test at the mapper or repository boundary before building the screen.
 
-Tablet/wide layout is deferred until phone flow is correct. When added, use Material 3 adaptive navigation patterns rather than a copied web sidebar.
+### 3. Implement fake-first
 
-### Demo 2: cached session roster
+- define domain state and repository interface;
+- create a fake repository that can emit deterministic states;
+- build stateless screen composables and previews;
+- add ViewModel behavior;
+- add DTO/Ktor/Room implementation last.
 
-```text
-Open app while connected
-→ session list loads
-→ close network
-→ reopen app
-→ cached list is visible and clearly marked stale
-→ reconnect refreshes it
+This keeps Compose previews and tests independent of a live Gateway or paid model.
+
+### 4. Run the tight test loop
+
+```bash
+cd android
+./gradlew.bat testDebugUnitTest --console=plain
+./gradlew.bat lintDebug --console=plain
+./gradlew.bat assembleDebug --console=plain
 ```
 
-Use Room for safe metadata cache. The cache is a convenience, not authorization proof: clear it on sign out and do not display it to a different signed-in user.
+For UI changes:
 
-### Demo 3: read-only canonical chat timeline
-
-```text
-Open session
-→ history/timeline renders
-→ send a web message while Android screen is open
-→ Android receives live SSE event
-→ background and foreground transcript remain ordered once
+```bash
+./gradlew.bat connectedDebugAndroidTest --console=plain
 ```
 
-This proves Android's SSE client against Gateway sequencing before adding message submission.
+Do not use a paid model in deterministic tests. Use Ktor `MockEngine`, fake repositories, and recorded sanitized SSE snapshots.
 
-### Demo 4: send a message and see one streamed answer
+### 5. Deploy and inspect
 
-```text
-Type message
-→ press Send
-→ optimistic pending user bubble appears
-→ Gateway accepts message
-→ canonical user event reconciles pending bubble
-→ assistant stream appears
-→ reload/reconnect shows one final transcript
+Start the existing emulator using the current CLI help. If `android emulator start` is unavailable on Windows, use the SDK emulator executable documented in `android/README.md`.
+
+Build/deploy:
+
+```bash
+android run \
+  --apks=android/app/build/outputs/apk/debug/app-debug.apk \
+  --device=emulator-5554
 ```
 
-Use an idempotency key generated once per submission. The Android app must handle both orderings:
+Inspect semantics first:
 
-```text
-SSE user event before HTTP response
-HTTP response before SSE user event
+```bash
+android layout --device=emulator-5554 --pretty
+android layout --device=emulator-5554 --full --pretty
 ```
 
-The UI never shows two user bubbles.
+The current CLI marks `layout --diff` as deprecated/no-op, so do not rely on it despite older skill text.
 
-### Demo 5: drafts and connection recovery
+Capture and visually inspect every changed screen:
 
-```text
-Type a draft in Session A
-→ open Session B
-→ return to Session A
-→ draft remains
-
-Lose network during response
-→ show Reconnecting
-→ reconnect from last sequence
-→ no duplicate text
+```bash
+android screen capture \
+  --device=emulator-5554 \
+  --output=docs/screenshots/android/chat.png
 ```
 
-Persist text drafts locally per authenticated user and session. Do not persist unaccepted attachments across process death in the first release.
+Use annotated screenshots only when layout semantics cannot locate a target:
 
-### Demo 6: truthful run cancellation
-
-```text
-Send a long request
-→ stop button shows while active
-→ tap Stop
-→ UI shows Stopping
-→ Gateway/runtime confirms terminal cancellation
-→ UI shows Stopped
+```bash
+android screen capture --annotate \
+  --device=emulator-5554 \
+  --output=docs/screenshots/android/chat-annotated.png
+android screen resolve \
+  --screenshot=docs/screenshots/android/chat-annotated.png \
+  --string="tap #3"
 ```
 
-Do not make Android cancellation “look done” before the Gateway emits a terminal event.
+Then execute the returned action with `adb shell input`. Before text input, verify the field is focused. Encode spaces as `%s`, use key event 66 for Enter, and scroll slowly.
 
-### Demo 7: approval card
+### 6. Evaluate a journey
 
-```text
-Gateway emits approval_requested
-→ Android displays effect summary and Approve / Reject
-→ user decides
-→ Gateway confirms outcome
-→ timeline retains durable status
+Store deterministic journeys under `android/journeys/`. Example:
+
+```xml
+<journey name="Stream a response">
+  <description>Send one message and observe one incremental response.</description>
+  <actions>
+    <action>Launch Lali while signed in to the test Gateway</action>
+    <action>Tap Main Thread</action>
+    <action>Tap the Message field</action>
+    <action>Enter "Explain SSE briefly"</action>
+    <action>Tap Send</action>
+    <action>Verify that one pending user message is visible</action>
+    <action>Verify that one assistant message grows while generation is active</action>
+    <action>Verify that the status changes to Ready when generation completes</action>
+  </actions>
+</journey>
 ```
 
-The Android app sends an approval decision; it never performs the email/effect itself.
+Evaluate actions exactly in order. A missing control, crash, freeze, or unmet assertion fails the journey. Record commands, screenshots, and comments in a Markdown result file.
 
-## Chat UX requirements
+### 7. Compare parity
 
-### Transcript
+For every visual slice:
 
-- Group user messages, assistant text, activity rows, approval cards, and errors into visibly different row types.
-- Use `LazyColumn` with stable item keys based on durable event/message identity.
-- Auto-scroll only when the user is already at the bottom. If reading earlier history, show a `New messages` affordance instead.
-- Do not render every token as a separate Compose row. Accumulate assistant deltas into a stable run/message row.
-- Announce run status and errors accessibly; do not announce each text token through TalkBack.
+1. create identical fixture content on web and Android;
+2. capture phone and wide Android screenshots;
+3. compare layout hierarchy, colors, typography, spacing, wrapping, states, and actions;
+4. inspect `android layout` for labels, roles, focusability, and touch targets;
+5. test font scaling, TalkBack, portrait/landscape, keyboard/IME, and reduced motion;
+6. keep screenshots that document accepted states.
 
-### Composer
+### 8. Completion gate
 
-- Multi-line text field.
-- Send button enabled only for non-blank text and valid authenticated/session state.
-- Stop replaces or sits beside Send only while the Gateway reports an abortable active run.
-- Preserve local text on failed command submission.
-- Support Android IME send action plus newline behavior deliberately; test hardware keyboard behavior.
+A slice is complete only when:
 
-### Connection states
+- its user trace works on an emulator or physical device;
+- its principal failure trace is automated;
+- unit tests, lint, build, and relevant connected tests pass;
+- changed screens were inspected through both layout output and screenshots;
+- no secrets or private transcript payloads appear in logs/artifacts;
+- web behavior still works if Gateway code changed;
+- deferred backend requirements are stated rather than simulated in Android.
 
-| State | User-facing text | Behavior |
-| --- | --- | --- |
-| connected | no persistent banner | live SSE active while screen visible |
-| reconnecting | `Reconnecting…` | retain transcript/draft; exponential bounded retry |
-| offline | `Offline — showing saved activity` | show cached data; commands fail clearly or queue only if explicitly designed |
-| unauthorized | `Sign in again` | close SSE, clear sensitive local state after sign out |
-| history failed | `Could not load conversation` + Retry | do not display an empty transcript as though it were valid |
-
-## SSE lifecycle on Android
-
-An Android SSE connection is a foreground screen resource, not a permanent background service.
-
-```text
-chat screen enters foreground
-→ repository opens SSE using last durable cursor
-→ events append to Room transactionally
-→ Room flow updates ViewModel/UI
-
-chat screen leaves foreground
-→ close SSE after a short, deliberate lifecycle boundary
-→ retain last sequence
-
-chat screen returns
-→ reconnect using cursor
-```
-
-Do not use WorkManager to keep an SSE connection alive. WorkManager is for bounded, deferrable work. A later notification architecture can use Firebase Cloud Messaging or another Gateway delivery mechanism to alert the user while the app is backgrounded; it is a separate product/infra decision.
-
-### Reconnection rules
-
-- Use bounded exponential backoff with jitter for transient failures.
-- Stop retrying on authentication/authorization failures until user action refreshes credentials.
-- Persist the cursor only after the associated event transaction commits to Room.
-- Deduplicate by `(timelineGeneration, sequence)`, not text matching.
-- If an event arrives with an unexpected gap, request/rebuild history from the last known cursor.
-- Never replay a command automatically merely because an SSE connection failed.
-
-## Local storage policy
-
-| Data | Store | Retention |
-| --- | --- | --- |
-| Device auth token | Keystore-backed encrypted storage | until sign out/revocation |
-| Active user identity | DataStore / in-memory | clear on sign out |
-| Session roster projection | Room | clear on sign out; bounded cache |
-| Timeline projection and SSE cursor | Room | bounded per session; clear on sign out |
-| Draft text | DataStore or Room | per user/session; clear after accepted send or delete |
-| Attachments not accepted by Gateway | memory only first | discarded after process death |
-| Provider credentials | never | Gateway-only |
-
-Do not use shared preferences directly for new state. Use DataStore.
-
-## Visual design
-
-Use Android-native interaction patterns and Material 3 components. Borrow Ahem's visual principles, not its Next.js component code:
-
-- warm neutral surfaces and restrained accent color;
-- compact session list with high text contrast;
-- clear selected-session state;
-- quiet, expandable operational details;
-- rounded but not oversized cards;
-- motion only for navigation/status feedback and disabled under reduced-motion settings where practical.
-
-Do not port Tailwind classes, Radix UI primitives, DOM focus behavior, or web sidebar geometry into Compose.
-
-## Testing strategy
+## Testing pyramid
 
 ### Unit tests
 
-Test repositories and ViewModels with fake Gateway clients and test dispatchers:
-
-- session list load/filter/error;
-- draft persistence and clearing only after acceptance;
-- pending message reconciliation in both HTTP/SSE orderings;
-- SSE deduplication and cursor persistence;
-- run/cancellation state transitions;
-- sign-out cache clearing.
+- snapshot-to-chat projection;
+- partial-to-final deduplication;
+- unknown content parts;
+- ViewModel loading/content/error transitions;
+- draft persistence;
+- auth expiration;
+- idempotent optimistic reconciliation;
+- reconnect backoff with virtual time.
 
 ### Network tests
 
-Use Ktor `MockEngine` or a local test server for:
+Use Ktor `MockEngine` for normal HTTP. Use a local in-process test server for SSE framing and cancellation when MockEngine cannot reproduce streaming behavior.
 
-- auth headers present and secrets absent from logs;
-- command payloads and idempotency keys;
-- malformed SSE event handling;
-- reconnect cursor (`Last-Event-ID`/`after`) behavior;
-- 401/403 behavior that stops reconnect loops.
+Verify:
 
-### Database tests
+- bearer header injection and redaction;
+- URL/path/query encoding;
+- JSON compatibility;
+- SSE initial/update parsing;
+- cancellation when destination stops;
+- `401`, `403`, `429`, malformed JSON, disconnect, and timeout behavior.
 
-Use in-memory Room database tests for:
+### Compose tests
 
-- event order and deduplication;
-- timeline generation reset boundary;
-- cache isolation by user;
-- transaction: event write and cursor update succeed/fail together.
+Test semantics and behavior rather than implementation details:
 
-### Compose UI tests
+- navigation destinations;
+- selected conversation;
+- send enabled state;
+- thinking disclosure;
+- table/code horizontal scrolling;
+- copy/fork/approval actions;
+- connection and error announcements;
+- minimum touch targets.
 
-- sign-in/loading/error states;
-- session selection;
-- draft restored after navigation;
-- send button and pending bubble;
-- approval confirmation;
-- Stop shows `Stopping…` before terminal outcome;
-- TalkBack labels on destructive actions.
+Enable Compose accessibility checks and still perform manual TalkBack/Switch Access testing.
 
-### Manual device checklist
+### Screenshot tests
 
-- emulator plus at least one physical device;
-- portrait and landscape;
-- system dark/light mode if supported;
-- process recreation while draft exists;
-- network flap during stream;
-- Gateway restart while app is open;
-- sign out and sign in as another account/device;
-- large font / TalkBack navigation.
+Add screenshot testing after the design tokens and core components stabilize. Use deterministic fake data, fixed device profiles, fixed font scale, dark theme, and disabled motion. Keep a small parity matrix rather than snapshotting every screen permutation.
 
-## Implementation discipline for the coding agent
+### Performance checks
 
-1. Read `AGENTS.md`, `CONTEXT.md`, this guide, `docs/embedded-pi-migration.md`, and `docs/session-ui-ux-spec.md` before changes.
-2. Run `android update`, `android info`, `android sdk list`, and `android skills list`; record the Android CLI version and relevant installed SDK/tool versions. If the CLI is unavailable, say so and use the documented Android Studio/Gradle fallback rather than inventing commands.
-3. Use `android docs search`/`fetch` to resolve current Android API questions. Install and read the official Android skill matching the current task. Do not use an unrelated skill merely because it is available.
-4. Start with Demo 0 or the native-auth contract; do not scaffold all screens at once.
-5. At each demo, state the concrete user trace and failure trace before coding.
-6. Use `android create` for the initial official project template when available. Inspect generated files before editing; do not immediately replace the generated architecture with a custom framework.
-7. Inspect current Android/Gradle/Ktor APIs from primary docs and installed artifacts. Do not use stale snippets or guessed APIs. Confirm that all app dependencies are stable.
-8. Prefer Android/Jetpack/Kotlin standard libraries over unneeded third-party dependencies.
-9. Keep Android-specific work under `android/`; do not rewrite the web client.
-10. Any required Gateway contract change must be client-neutral and separately tested in the existing Node test suite.
-11. For each slice, run the applicable Gradle unit, lint, and connected/Compose UI tests; use `android run` to deploy it; inspect it with `android layout` and `android screen capture` where supported; and add/update a deterministic Journey for the visible flow when appropriate.
-12. When Gateway code changes, also run the existing Lali typecheck, tests, and web build so the Android client does not regress web behavior.
-13. Use Android Studio for final Compose preview inspection, accessibility, debugging, and performance profiling. Passing an agent-run build alone is not production validation.
-14. Report commands, tool versions, installed skills, screenshots/Journeys used, tests, and deliberately deferred work.
-15. Do not commit unless explicitly requested.
+For long chats and fast partial updates:
 
-## First implementation ticket
+- profile recomposition counts;
+- verify only the active assistant row changes;
+- avoid reparsing the whole transcript in a composable;
+- benchmark long Markdown tables/code;
+- verify `LazyColumn` scroll position remains stable;
+- inspect memory after repeatedly opening conversations.
 
-**Title:** Establish native Android authentication contract and prove an authenticated app shell
+Use the Android profiler skill and Android Studio profiler for measured regressions.
 
-**Demo:**
+## Security checklist
+
+Before any non-debug distribution:
+
+- verified HTTPS App Links only;
+- no token in URL, logs, screenshots, clipboard, backups, or crash reports;
+- Keystore-encrypted bearer material;
+- production HTTPS and certificate validation;
+- explicit native auth and CSRF policy;
+- server-side ownership checks for every conversation/task/secret;
+- revocable device sessions;
+- cache cleared on sign-out/user change;
+- exported activities minimized and incoming intents validated;
+- notification content private by default on lock screen;
+- no provider API keys in the APK;
+- release R8/build and dependency review;
+- Play Data Safety and privacy review before publishing.
+
+## Decisions to make before feature coding
+
+Make these decisions explicitly, in order:
+
+1. the product name is Saul?
+2. Better Auth native flow will be supported: device authorization?
+3. What is the stable mobile/client-neutral Gateway DTO version?
+4. Is Android dark-only until web has a light theme? yes
+5. Which native Markdown renderer passes the fixture spike?
+6. Which capabilities are owner/admin-only, especially Secrets?
+7. Is offline history required for v1, or only saved drafts and fresh snapshots? offline history required
+8. Which Android-only feature provides the first real advantage after parity?
+
+## Recommended first ticket
+
+**Title:** Secure the Android scaffold and prove bearer-authenticated Gateway access
+
+**Trace:**
 
 ```text
-Android app opens
-→ user signs in through Gateway-owned browser flow
-→ returns to the app
-→ authenticated GET /api/me succeeds
-→ Sign out removes local credential/cache
+Launch Android app
+-> request device authorization
+-> complete sign-in in Gateway-owned browser UI
+-> Android receives/exchanges only a one-time code
+-> encrypted credential is stored
+-> authenticated session and conversation-list requests succeed
+-> process restart remains signed in
+-> sign out revokes/clears the credential and cache
 ```
 
-**Why first:** Without a safe native identity contract, every session/chat screen either bypasses security or builds on a browser-cookie assumption that will have to be removed.
+**Acceptance criteria:**
 
-**Not included:** session list, Room cache, SSE, chat, notifications, effects, or embedded Pi migration.
+- no bearer/session token in a URI or log;
+- callback is a verified App Link in release;
+- Better Auth native plugins/configuration are covered by backend tests;
+- Ktor authenticated HTTP and SSE requests are covered by tests;
+- root navigation changes correctly on sign-in/sign-out;
+- unit tests, backend tests, lint, build, connected UI test, layout inspection, and screenshots pass.
+
+Do this before implementing the chat UI. It removes the highest-risk uncertainty and gives every later vertical slice a real authenticated transport.
+
+## Primary references
+
+Use these through `android docs search` and `android docs fetch` so the content matches the installed Android Knowledge Base:
+
+- `kb://android/topic/architecture/recommendations`
+- `kb://android/develop/ui/compose/architecture`
+- `kb://android/topic/architecture/data-layer/offline-first`
+- `kb://android/develop/adaptive-apps/guides/list-detail`
+- `kb://android/privacy-and-security/risks/unsafe-use-of-deeplinks`
+- `kb://android/privacy-and-security/keystore`
+- `kb://android/develop/ui/compose/accessibility/testing`
+- Navigation 3 skill: install or locate it with `android skills find navigation-3`, then read its `SKILL.md`
+- Android CLI interaction rules: `.agents/skills/android-cli/references/interact.md`
+- Android CLI journey rules: `.agents/skills/android-cli/references/journeys.md`

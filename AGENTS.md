@@ -42,6 +42,7 @@ Single-context layout (root GLOSSARY.md and docs/adr/). See `docs/agents/domain.
 ## Android Client
 
 - The Android app must be completely identical to the web UI in terms of its design system and color theming.
+- Before planning or implementing Android work, read `docs/android-client-implementation-guide.md` and the Android CLI skill.
 
 ## Pi-Durable Architecture
 

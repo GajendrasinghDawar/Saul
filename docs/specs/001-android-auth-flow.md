@@ -1,44 +1,80 @@
-## Problem Statement
+# Native Android authentication
 
-The native Android client needs a secure way to authenticate users against the Saul backend. Native apps cannot safely pretend to be web browsers or share browser cookie jars. Furthermore, duplicating the entire authentication UI (Sign In, Sign Up, Forgot Password, Rate Limiting) into native Kotlin screens represents a massive maintenance burden for a solo developer. 
+Status: planned; implementation has not started.
 
-## Solution
+The authoritative implementation sequence is in [`docs/android-client-implementation-guide.md`](../android-client-implementation-guide.md#authentication-design).
 
-We will implement a "Device-Link" authentication flow. The Android app will delegate the sign-in process to a Chrome Custom Tab pointing to the web app's existing login page. Upon a successful login, the web app will intercept the success state and hand the session token back to the Android app via a custom deep link. The Android app will then use this token as a Bearer token for all future API calls.
+## Problem
 
-## User Stories
+The Android client needs a durable identity for authenticated HTTP and SSE requests. The current Gateway is proven only with Better Auth browser session cookies. The Android scaffold does not yet have an approved native authentication contract.
 
-1. As an Android user, I want to tap "Sign In" and see a secure browser tab open, so that I can use my existing password manager to log in securely.
-2. As an Android user, I want to be seamlessly redirected back to the native app after logging in, so that I can start chatting without manual copy-pasting.
-3. As an Android user, I want my session to remain active between app launches, so that I don't have to log in every time I open the app.
-4. As an Android user, I want to tap "Sign Out" to clear my local credentials and return to the login screen, so that I can protect my account on shared devices.
-5. As a developer, I want to build the Auth UI only once on the web, so that I don't have to maintain separate Native Kotlin screens for password resets, email verification, and sign-ups.
-6. As a developer, I want to use standard `Authorization: Bearer <token>` headers from the Android app, so that the Backend's Better Auth middleware can validate requests uniformly without native-specific hacks.
+## Decision
 
-## Implementation Decisions
+Use browser-owned sign-in followed by a one-time device authorization exchange.
 
-- **Auth Handoff URL Parameter:** The Android app will launch the Chrome Custom Tab to `<BASE_URL>/login?client=android`.
-- **Web App Redirection:** The Web UI (Vite) will be updated to check for the `client=android` search parameter. If present, upon successful authentication, instead of routing to the web dashboard, it will extract the session token and redirect the browser to `saul://auth?token=<TOKEN>`.
-- **Deep Link Scheme:** The Android app will use `saul://auth` as its custom scheme for local development. (Note: This will be upgraded to verified Android App Links (`https://saul.app/auth`) before Play Store deployment to prevent intent hijacking).
-- **Token Storage:** The Android app will intercept the `saul://` intent in its `SignInViewModel` or `MainActivity`, extract the token, and store it securely (e.g., using DataStore backed by EncryptedSharedPreferences/Keystore).
-- **Network API:** The Android `GatewayClient` will be configured to attach `Authorization: Bearer <token>` to all Ktor HTTP and SSE requests.
-- **Backend Auth:** The Saul backend already uses Better Auth, which natively supports reading session tokens from Bearer headers. No major backend configuration changes are required.
+```text
+Android requests a short-lived device challenge
+-> Android opens the Gateway verification page in a Custom Tab
+-> user signs in through the existing Better Auth web flow
+-> authenticated user approves the device challenge
+-> Android polls at the server-provided interval
+-> Gateway returns a scoped, revocable credential once
+-> Android encrypts the credential with an Android Keystore key
+-> Ktor uses it for HTTP and SSE Authorization headers
+```
 
-## Testing Decisions
+Evaluate Better Auth’s installed `deviceAuthorization` and `bearer` plugins first. If they do not meet the requirements, implement the same protocol with project-owned one-time codes. Record the final plugin/API decision in this specification before coding.
 
-Tests should verify external behavior rather than implementation details:
+## Security requirements
 
-- **Web Frontend (Vite):** Test the Login component's redirect logic. Given a mock URL with `?client=android` and a mocked successful Better Auth `signIn` response, assert that `window.location.href` (or the router equivalent) is mutated to the correct `saul://auth?token=...` string.
-- **Android Network Client:** Test `GatewayClient` using a Ktor `MockEngine`. Given a stored token, assert that the outgoing HTTP request contains the correct `Authorization: Bearer` header.
-- **Android UI/ViewModel:** Test `SignInViewModel`. Given a simulated incoming deep link intent containing a token, assert that the ViewModel transitions to an authenticated state and saves the token to the local repository.
-- **Prior Art:** We will follow the existing Ktor `MockEngine` testing patterns established in the Android scaffolding (`GatewayClientTest.kt`).
+- The callback and browser URLs contain only an opaque, short-lived challenge or authorization code.
+- Release builds use verified HTTPS Android App Links.
+- A debug-only custom scheme may be used for local development.
+- Every challenge is random, short-lived, single-use, and bound to the initiating client/state.
+- Tokens never appear in URLs, logs, analytics, screenshots, notifications, or clipboard content.
+- Android stores bearer material encrypted with a non-exportable Android Keystore key.
+- The Gateway stores only the server-side representation needed to validate or revoke a credential.
+- Users can list and revoke Android device sessions.
+- Sign-out removes the credential and all user-scoped local cache.
+- Authentication failures close active SSE streams and return to the signed-out root flow.
+- Gateway ownership and role checks remain authoritative for every API operation.
 
-## Out of Scope
+## Gateway work
 
-- Setting up production Android App Links (`.well-known/assetlinks.json`) domain verification. This is deferred until the app has a live public domain and is preparing for Play Store release.
-- Implementing Social Logins (Google/GitHub). The backend currently relies exclusively on Email/Password authentication.
-- Implementing token refresh rotation. Better Auth manages session expiration; the initial release will require a re-login if the long-lived session expires.
+1. Configure and test the selected Better Auth native plugins or equivalent device-code endpoints.
+2. Make `createAuthGuard()` resolve the native bearer identity.
+3. Define CSRF behavior for bearer-authenticated mutations separately from browser-cookie requests.
+4. Add device-session revocation and expiry.
+5. Verify authenticated HTTP and SSE requests.
+6. Remove request, token, and transcript debug logging.
+7. Return stable `401` and `403` error bodies.
 
-## Further Notes
+## Android work
 
-- The Android emulator accesses the host machine's localhost via `10.0.2.2`. Therefore, the Android app's base API URL must be configured to `http://10.0.2.2:3000`, and the Custom Tab should launch `http://10.0.2.2:5173/login?client=android`.
+1. Replace plaintext `SharedPreferences` token storage with a Keystore-backed credential store.
+2. Move sign-in coordination into `AuthRepository`; ViewModels must not receive `Activity` or `Context`.
+3. Configure the verification URL through `BuildConfig` rather than hard-coding emulator addresses.
+4. Open the verification page in a Custom Tab.
+5. Poll or exchange the one-time challenge through Ktor.
+6. Drive the Navigation 3 root flow from authenticated state.
+7. Attach the bearer credential to normal and SSE requests.
+8. Clear credential and cached user data atomically on sign-out.
+
+## Acceptance tests
+
+- successful browser authorization and return;
+- challenge expiry, replay, malformed input, and cancellation;
+- callback interception attempt from an unverified source;
+- process restart remains signed in;
+- revoked or expired credential returns to sign-in;
+- authenticated conversation list and SSE stream use the same identity;
+- sign-out clears encrypted credential and user cache;
+- test logs and captured artifacts contain no token.
+
+## Out of scope for the first slice
+
+- social login;
+- credential transfer between devices;
+- biometric gating of every request;
+- background push notifications;
+- chat, conversations, and offline cache UI.

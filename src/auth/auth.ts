@@ -1,5 +1,6 @@
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { betterAuth } from 'better-auth'
+import { bearer, deviceAuthorization } from 'better-auth/plugins'
 import { Resend } from 'resend'
 import { db } from '../db/index.ts'
 import { getSecret } from '../secretsManager.ts'
@@ -9,6 +10,12 @@ const resend = resendApiKey ? new Resend(resendApiKey) : null
 const fromEmail = 'onboarding@resend.dev'
 
 export const auth = betterAuth({
+  plugins: [
+    bearer(),
+    deviceAuthorization({
+      verificationUri: '/device',
+    }),
+  ],
   secret: getSecret('BETTER_AUTH_SECRET', ''),
   database: drizzleAdapter(db, {
     provider: 'sqlite',

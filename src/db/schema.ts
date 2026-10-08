@@ -105,3 +105,17 @@ export const secrets = sqliteTable('secrets', {
   updatedAt: integer('updatedAt', { mode: 'timestamp' }).notNull(),
   updatedBy: text('updatedBy'), // user id
 })
+
+export const deviceCode = sqliteTable('deviceCode', {
+  id: text('id').primaryKey(),
+  deviceCode: text('deviceCode').notNull().unique(),
+  userCode: text('userCode').notNull().unique(),
+  userId: text('userId').references(() => user.id),
+  clientId: text('clientId').notNull(),
+  scope: text('scope'),
+  status: text('status').notNull(),
+  expiresAt: integer('expiresAt', { mode: 'timestamp' }).notNull(),
+  lastPolledAt: integer('lastPolledAt', { mode: 'timestamp' }),
+  createdAt: integer('createdAt', { mode: 'timestamp' }),
+  updatedAt: integer('updatedAt', { mode: 'timestamp' }),
+})

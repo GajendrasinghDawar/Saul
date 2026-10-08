@@ -40,7 +40,18 @@ const csrfConfig = doubleCsrf({
   },
 })
 
-export const doubleCsrfProtection = csrfConfig.doubleCsrfProtection
+export const doubleCsrfProtection = (
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) => {
+  const authHeader = req.headers.authorization
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return next()
+  }
+  return csrfConfig.doubleCsrfProtection(req, res, next)
+}
+
 export const generateCsrfToken = csrfConfig.generateCsrfToken
 
 // Global rate limiting (feature-specific routes can define stricter limits)
