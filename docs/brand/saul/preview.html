@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Saul Guardian identity</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,sans-serif;color:#eeeff1;background:#101012}
+    *{box-sizing:border-box}body{margin:0}main{max-width:1080px;margin:auto;padding:48px 24px}
+    h1{font-size:clamp(32px,6vw,64px);letter-spacing:-.05em;margin:12px 0}h2{font-size:22px;font-weight:500;margin:32px 0 16px}
+    p{color:#b0b4ba;max-width:65ch;line-height:1.6}a{color:#28a382}.eyebrow{font-size:12px;letter-spacing:.16em;color:#ffc53d;text-transform:uppercase}
+    .concepts{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:#18191b;border:1px solid #363a3f;border-radius:16px;padding:24px}
+    .selected{border-color:#28a382}.card svg,.card img{display:block;width:128px;height:128px;margin:16px auto}.card h3{margin:0;font-size:16px}.card p{font-size:14px;margin-bottom:0}
+    .row{display:flex;gap:24px;flex-wrap:wrap;align-items:center}.sample{display:flex;gap:12px;flex-direction:column;align-items:center;font-size:12px;color:#b0b4ba}
+    .sample svg{width:96px;height:96px;background:#232529;border-radius:12px}.sizes{min-height:120px;gap:32px;padding:24px;border:1px solid #363a3f;border-radius:16px}
+    .surface{padding:20px;min-width:250px;border-radius:16px;display:flex;gap:12px;align-items:center;font-size:36px;font-weight:600;letter-spacing:-.04em}
+    .surface img{width:80px;height:80px}.light{background:#eeeff1;color:#101012}.dark{background:#18191b;color:#eeeff1}
+    .palette{display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:#b0b4ba}.swatch{display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:middle;background:var(--color)}
+    footer{border-top:1px solid #363a3f;margin-top:32px;padding-top:20px;font-size:14px;line-height:1.6;color:#b0b4ba}
+    @media(max-width:650px){main{padding:24px 16px}.concepts{grid-template-columns:1fr}.card{padding:20px}.sizes{gap:24px}.surface{min-width:100%}}
+  </style>
+</head>
+<body>
+  <main>
+    <header><div class="eyebrow">Saul / personal autonomous agent</div><h1>A guardian.<br>Not a monogram.</h1><p>A carved, angular mask for an agent that keeps watch. Jade side panels protect the amber core. The crimson crown points forward. Clear gaps keep each part distinct.</p></header>
+    <h2>Three shapes explored</h2>
+    <section class="concepts" aria-label="Logo concepts">
+      <article class="card selected"><h3>A / Guardian / selected</h3><img src="saul-mark.svg" alt="Angular guardian mask"><p>Strong bilateral shape. A watchful face made from four solid pieces, not a letter.</p></article>
+      <article class="card"><h3>B / Ember</h3><svg viewBox="0 0 128 128" role="img" aria-label="Angular ember"><path d="M58 16 L30 52 L30 78 L58 108 L58 84 L44 68 L58 50 Z" fill="#28A382"/><path d="M70 16 L98 52 L98 78 L70 108 L70 84 L84 68 L70 50 Z" fill="#EA3E83"/><path d="M64 48 L76 66 L64 86 L52 66 Z" fill="#FFC53D"/></svg><p>An enclosed spark. Clear at small sizes, but reads more like an energy brand.</p></article>
+      <article class="card"><h3>C / Crest</h3><svg viewBox="0 0 128 128" role="img" aria-label="Stacked angular crest"><path d="M24 22 L64 42 L104 22 L104 42 L64 62 L24 42 Z" fill="#28A382"/><path d="M30 54 L64 72 L98 54 L98 72 L64 90 L30 72 Z" fill="#EA3E83"/><path d="M46 90 L64 100 L82 90 L64 116 Z" fill="#FFC53D"/></svg><p>Repeated chevrons suggest progress. Less distinct than the guardian face.</p></article>
+    </section>
+    <h2>Actual favicon sizes</h2>
+    <section class="row sizes" aria-label="Favicon size tests">
+      <div class="sample"><img src="favicon.svg" width="16" height="16" alt="16 pixel favicon"><span>16 px</span></div>
+      <div class="sample"><img src="favicon.svg" width="24" height="24" alt="24 pixel favicon"><span>24 px</span></div>
+      <div class="sample"><img src="favicon.svg" width="32" height="32" alt="32 pixel favicon"><span>32 px</span></div>
+      <div class="sample"><img src="favicon.svg" width="64" height="64" alt="64 pixel favicon"><span>64 px</span></div>
+      <div class="sample"><img src="favicon.svg" width="96" height="96" alt="96 pixel favicon"><span>96 px</span></div>
+    </section>
+    <h2>Android mask previews</h2>
+    <section class="row" aria-label="Android masks">
+      <div class="sample"><svg viewBox="18 18 72 72" role="img" aria-label="Circle mask"><circle cx="54" cy="54" r="36" fill="#101012"/><image href="saul-mark.svg" width="128" height="128" transform="translate(15.6 15.6) scale(.6)"/></svg><span>Circle</span></div>
+      <div class="sample"><svg viewBox="18 18 72 72" role="img" aria-label="Rounded square mask"><rect x="18" y="18" width="72" height="72" rx="18" fill="#101012"/><image href="saul-mark.svg" width="128" height="128" transform="translate(15.6 15.6) scale(.6)"/></svg><span>Rounded square</span></div>
+      <div class="sample"><svg viewBox="18 18 72 72" role="img" aria-label="Monochrome mask"><circle cx="54" cy="54" r="36" fill="#18211e"/><image href="saul-mark-light.svg" width="128" height="128" transform="translate(15.6 15.6) scale(.6)"/></svg><span>Monochrome shape</span></div>
+    </section>
+    <h2>Transparent logo</h2>
+    <section class="row" aria-label="Transparent logo backgrounds">
+      <div class="surface dark"><img src="saul-mark-1024.png" alt="Transparent guardian on dark slate"><span>saul</span></div>
+      <div class="surface light"><img src="saul-mark-1024.png" alt="Transparent guardian on light slate"><span>saul</span></div>
+    </section>
+    <h2>Three theme colors</h2>
+    <section class="palette" aria-label="Brand colors"><span><i class="swatch" style="--color:#28a382"></i>Jade9 / #28A382</span><span><i class="swatch" style="--color:#ea3e83"></i>Crimson9 / #EA3E83</span><span><i class="swatch" style="--color:#ffc53d"></i>Amber9 / #FFC53D</span></section>
+    <footer><a href="README.md">Asset files and use</a>. The installed web and Android icons use Guardian. Mask examples here are simulations, not device screenshots. Android sets the themed icon colors. This is original geometric artwork, not an emblem of a specific culture.</footer>
+  </main>
+</body>
+</html>
