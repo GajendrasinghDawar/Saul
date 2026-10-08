@@ -1,6 +1,5 @@
 package io.github.gajendrasinghdawar.lali.core.auth
 
-import io.github.gajendrasinghdawar.lali.TokenRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.post
@@ -52,12 +51,12 @@ interface AuthRepository {
         expiresIn: Int,
         onPollProgress: ((attempt: Int, status: String) -> Unit)? = null
     ): String?
-    fun signOut()
+    suspend fun signOut()
 }
 
 class DefaultAuthRepository(
     private val httpClient: HttpClient,
-    private val tokenRepository: TokenRepository,
+    private val tokenRepository: CredentialStore,
     private val gatewayBaseUrl: String
 ) : AuthRepository {
     
@@ -99,7 +98,7 @@ class DefaultAuthRepository(
                 val parsed = try { jsonParser.decodeFromString<DeviceTokenResponse>(rawText) } catch (_: Exception) { null }
 
                 if (httpResponse.status.value in 200..299 && parsed?.accessToken != null) {
-                    tokenRepository.token = parsed.accessToken
+                    tokenRepository.save(parsed.accessToken)
                     onPollProgress?.invoke(attempt, "Token received! Transitioning to session...")
                     return parsed.accessToken
                 }
@@ -126,7 +125,7 @@ class DefaultAuthRepository(
         return null
     }
 
-    override fun signOut() {
+    override suspend fun signOut() {
         tokenRepository.clear()
     }
 }

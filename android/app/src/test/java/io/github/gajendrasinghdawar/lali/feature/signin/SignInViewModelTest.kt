@@ -48,7 +48,7 @@ private class FakeAuthRepository(
     return res
   }
 
-  override fun signOut() {
+  override suspend fun signOut() {
     _session.value = null
   }
 }

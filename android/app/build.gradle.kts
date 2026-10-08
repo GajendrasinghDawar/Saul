@@ -102,9 +102,6 @@ dependencies {
   implementation(libs.ktor.serialization.kotlinx.json)
   testImplementation(libs.ktor.client.mock)
   
-  // Security
-  implementation(libs.androidx.security.crypto)
-  
   // Custom Tabs
   implementation(libs.androidx.browser)
 }
