@@ -5,6 +5,7 @@ import {
   useReducedMotion,
 } from 'motion/react'
 import { useState } from 'react'
+import { SaulBrand } from '../../components/SaulBrand'
 
 const suggestions = [
   'Plan my day',
@@ -21,6 +22,7 @@ export function EmptyChat({ onSelect }: { onSelect: (text: string) => void }) {
   return (
     <section className='w-full px-3 pb-12 pt-[calc(max(1vh,0.5rem))] sm:px-0'>
       <div className='mx-auto w-full max-w-3xl py-8 sm:py-10'>
+        <SaulBrand className='mb-5' />
         <div className='flex flex-col gap-2'>
           <h1 className='text-2xl font-bold leading-tight tracking-tight text-slate12 sm:text-3xl md:text-4xl'>
             What can I help with?

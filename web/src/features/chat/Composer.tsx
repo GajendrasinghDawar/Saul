@@ -107,7 +107,7 @@ export function Composer({
               value={draft}
               onChange={event => setDraft(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder='Message Lali...'
+              placeholder='Message Saul...'
               rows={1}
               className='max-h-[120px] min-h-6 overflow-y-auto'
               aria-label='Message'

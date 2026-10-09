@@ -26,7 +26,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (isAuthenticated === null)
     return (
       <div className='flex min-h-svh items-center justify-center bg-slate2 text-sm text-slate10'>
-        Loading Lali...
+        Loading Saul...
       </div>
     )
   if (!isAuthenticated) return null

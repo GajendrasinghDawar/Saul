@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { GitBranch, Hash, MessageCircle, Send } from 'lucide-react'
+import { GitBranch, Hash, Send } from 'lucide-react'
 import type { FormEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { SaulMark } from '../components/SaulBrand'
 
 export const Route = createFileRoute('/chat/thread/$threadId')({
   component: ChatTab,
@@ -166,9 +167,9 @@ function ChatTab() {
       <div className='flex-1 bg-white shadow rounded-lg border border-gray-200 flex flex-col min-w-0'>
         <div className='px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between shrink-0'>
           <div className='flex items-center gap-2'>
-            <MessageCircle className='w-5 h-5 text-gray-500' />
+            <SaulMark className='size-8' />
             <h2 className='text-lg font-medium text-gray-900'>
-              Lali{' '}
+              Saul{' '}
               <span className='text-gray-400 text-sm font-normal'>
                 | Thread #{activeThreadId || '...'}
               </span>
@@ -300,7 +301,7 @@ function ChatTab() {
               type='text'
               value={message}
               onChange={e => setMessage(e.target.value)}
-              placeholder='Chat with Lali...'
+              placeholder='Chat with Saul...'
               className='flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3 border'
             />
             <button

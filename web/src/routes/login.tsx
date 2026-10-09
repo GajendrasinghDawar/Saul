@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { LogIn, Sparkles } from 'lucide-react'
+import { LogIn } from 'lucide-react'
 import { useState } from 'react'
+import { SaulBrand } from '../components/SaulBrand'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 
@@ -50,10 +51,8 @@ function LoginPage() {
   return (
     <main className='flex min-h-svh items-center justify-center bg-slate2 p-4'>
       <section className='w-full max-w-sm rounded-xl border border-slate5 bg-slate3 p-7 shadow-5'>
-        <div className='mb-6 flex size-10 rotate-3 items-center justify-center rounded-lg border border-crimson7 bg-crimson4 text-crimson11 shadow-2'>
-          <Sparkles size={19} />
-        </div>
-        <h1 className='text-2xl font-bold text-slate12'>Sign in to Lali</h1>
+        <SaulBrand className='mb-6' />
+        <h1 className='text-2xl font-bold text-slate12'>Sign in to Saul</h1>
         <p className='mt-2 text-sm leading-relaxed text-slate10'>
           Access your sessions, mail, and assistant workspace.
         </p>

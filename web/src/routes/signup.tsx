@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Sparkles, UserPlus } from 'lucide-react'
+import { UserPlus } from 'lucide-react'
 import { useState } from 'react'
+import { SaulBrand } from '../components/SaulBrand'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 
@@ -53,12 +54,10 @@ function SignupPage() {
   return (
     <main className='flex min-h-svh items-center justify-center bg-slate2 p-4'>
       <section className='w-full max-w-sm rounded-xl border border-slate5 bg-slate3 p-7 shadow-5'>
-        <div className='mb-6 flex size-10 rotate-3 items-center justify-center rounded-lg border border-crimson7 bg-crimson4 text-crimson11 shadow-2'>
-          <Sparkles size={19} />
-        </div>
+        <SaulBrand className='mb-6' />
         <h1 className='text-2xl font-bold text-slate12'>Create your account</h1>
         <p className='mt-2 text-sm leading-relaxed text-slate10'>
-          Get started with Lali, your personal assistant.
+          Get started with Saul, your personal assistant.
         </p>
 
         <form onSubmit={e => void handleSignup(e)} className='mt-6 space-y-4'>

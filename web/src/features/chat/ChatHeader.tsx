@@ -9,7 +9,7 @@ export function ChatHeader() {
   const title =
     sessionId === 'main'
       ? 'Main session'
-      : (sessionId ?? (pathname.slice(1) || 'Lali'))
+      : (sessionId ?? (pathname.slice(1) || 'Saul'))
 
   return (
     <header className='flex h-16 shrink-0 items-center gap-3 border-b border-slate4/50 px-2 md:px-4'>

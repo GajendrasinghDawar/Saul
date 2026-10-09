@@ -26,10 +26,12 @@ Keep the gaps and proportions. Do not add shadows, gradients, strokes, or small 
 
 Web icons are in `web/public/`. `web/index.html` links the SVG, ICO fallback, and touch icon. The web tab and Android launcher display the name Saul. The Android package ID is unchanged.
 
+The in-app web mark is in `web/src/assets/saul-mark.svg`. The shared `SaulBrand` and `SaulMark` components use it on account pages, in the sidebar, and in chat.
+
 Android resources are in `android/app/src/main/res/`. The manifest already uses `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round`. Each adaptive layer is 108 dp. The foreground uses a 0.6 scale and a 15.6 dp offset. The mark fits within the central 66 dp safe circle. Keep the foreground separate from its background; let the launcher set the mask.
 
 The old legacy WebP files were replaced with PNGs. Do not keep PNG and WebP resources with the same name in one density folder.
 
-If you change the source SVG, export all PNG and ICO files again. Keep the Android path data equal to the SVG path data. Check the icon at 16 pixels, on light and dark surfaces, and in an actual launcher. Check themed icons too.
+If you change the source SVG, export all PNG and ICO files again. Keep the web SVG and Android path data equal to the source SVG. Check the icon at 16 pixels, on light and dark surfaces, and in an actual launcher. Check themed icons too.
 
 Primary source: [Android adaptive icon requirements](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive).

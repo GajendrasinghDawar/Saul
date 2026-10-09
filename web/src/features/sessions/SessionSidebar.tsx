@@ -9,6 +9,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { SaulMark } from '../../components/SaulBrand'
 import { Button } from '../../components/ui/Button'
 import {
   Dialog,
@@ -152,18 +153,22 @@ export function SessionSidebar() {
               <SidebarMenuButton
                 asChild
                 size='lg'
-                tooltip='Lali'
-                className='text-crimson10'
+                tooltip='Saul'
+                className='text-slate12'
               >
-                <Link to='/' onClick={() => setOpenMobile(false)}>
+                <Link
+                  to='/'
+                  aria-label='Saul home'
+                  onClick={() => setOpenMobile(false)}
+                >
                   <SidebarMenuIcon
                     layout='position'
-                    className='flex size-8 shrink-0 rotate-3 items-center justify-center rounded-lg border border-crimson7 bg-crimson4 text-sm font-black shadow-2'
+                    className='flex size-8 shrink-0 items-center justify-center'
                   >
-                    L
+                    <SaulMark className='size-8' />
                   </SidebarMenuIcon>
                   <SidebarLabel className='text-xl font-bold tracking-tight'>
-                    Lali
+                    Saul
                   </SidebarLabel>
                 </Link>
               </SidebarMenuButton>

@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Check, ShieldAlert, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { SaulBrand } from '../components/SaulBrand'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 
@@ -158,9 +159,7 @@ function DevicePage() {
   return (
     <main className='flex min-h-svh items-center justify-center bg-slate2 p-4'>
       <section className='w-full max-w-sm rounded-xl border border-slate5 bg-slate3 p-7 shadow-5'>
-        <div className='mb-6 flex size-10 items-center justify-center rounded-lg border border-indigo7 bg-indigo4 text-indigo11 shadow-2'>
-          <ShieldAlert size={19} />
-        </div>
+        <SaulBrand className='mb-6' />
         <h1 className='text-2xl font-bold text-slate12'>Connect Device</h1>
 
         {!requestInfo ? (
@@ -200,7 +199,7 @@ function DevicePage() {
         ) : (
           <>
             <p className='mt-2 text-sm leading-relaxed text-slate10'>
-              A device is requesting access to your Lali account.
+              A device is requesting access to your Saul account.
             </p>
             <div className='mt-6 rounded-md border border-slate5 bg-slate4 p-4 text-sm'>
               <div className='mb-2 flex justify-between'>
