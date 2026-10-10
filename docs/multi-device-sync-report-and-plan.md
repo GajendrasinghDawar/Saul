@@ -103,6 +103,64 @@ Web or Android
 
 The server sends an `init` event with the current view, then `update` events with full views. Both clients rebuild their transcript from each view. They do not copy messages to each other. A reconnect starts with a fresh current view; it does not replay every missed SSE event.
 
+### How the tested sync worked
+
+1. Web and Android signed in through separate sessions for the same user. The server allowed both sessions to access conversation #2.
+2. Both clients observed #2 through `/api/stream?conversationId=2`. Each connection received its own initial full view. A device attaching after a message was saved could read that message in its initial view.
+3. The web sent `WEB_SYNC_20261010_A` through `POST /api/chat` with conversation ID #2. ChatService submitted the input to that Pi conversation. Pi saved user entry 7 and started generation.
+4. Pi committed changes to the conversation view as the response progressed. The server's view subscription sent updated snapshots to clients connected at that time. Android did not have to send a request for the answer or run its own agent.
+5. The web and Android projections rebuilt the visible messages from their initial and updated snapshots. The completed answer was saved as assistant entry 11 and appeared on both clients. The separate late-join case verified attachment while generation was still active.
+6. Android sent `ANDROID_SYNC_20261010_B` through the same POST endpoint with the same conversation ID. Pi saved user entry 22 and assistant entry 25. The web, already subscribed, received and displayed them without a page reload.
+
+The HTTP reply to the sending device was not the cross-device delivery mechanism. The SSE subscriptions delivered the shared state. Thus Android could observe a web send, and web could observe an Android send, without forwarding one device's HTTP response to the other.
+
+```text
+Web sends to conversation #2
+       │
+       ▼
+Pi saves entry 7, streams the answer, then saves entry 11
+       │
+       ├─ updated view → web projection → web transcript
+       └─ updated view → Android projection → Android transcript
+
+Android sends to conversation #2
+       │
+       ▼
+Pi saves entry 22, streams the answer, then saves entry 25
+       │
+       ├─ updated view → web projection → web transcript
+       └─ updated view → Android projection → Android transcript
+```
+
+### Why these cases worked
+
+- **Same destination:** both devices reached the same backend and explicitly selected the same conversation ID. Separate device sessions did not create separate transcripts for this test.
+- **One saved history:** Pi owned the conversation state. Each client read that state instead of maintaining a competing server-side history.
+- **Live subscriptions:** a saved view change triggered an update on each active stream, not only on the device that sent the message.
+- **Initial state on attachment:** a late Android connection received the work already in progress. It did not need the earlier stream events to reconstruct the visible state.
+- **Snapshot replacement:** both clients rebuilt history rather than appending the entire snapshot. This prevented snapshot-driven duplication in the tested cases. It does not prove duplicate sends are prevented.
+
+During the network interruption, Android could not receive live updates. It retained its last visible history. Web continued sending and receiving against the server. When Android regained network access, its repository retried the stream connection. The fresh initial view contained the missed message and completed response, so Android caught up. This proves catch-up after reconnect, not continuous delivery while disconnected or sending while offline.
+
+### When sync was absent, and how to diagnose a failure
+
+No unexpected sync failure was reproduced. Two tested cases correctly had no shared updates: a disconnected Android client could not receive live data, and a client viewing conversation #12 did not receive #2's tagged messages. Both are expected boundaries, not defects.
+
+For a reported failure, check these boundaries in order. The untested entries below are diagnostic hypotheses, not established causes of an incident.
+
+| Symptom | Boundary to check | Evidence in this report |
+| --- | --- | --- |
+| A device sees a different history | Compare backend address, signed-in user, and selected conversation ID. | Both devices matched for the passing test; #12 correctly stayed separate. |
+| Android stops receiving while disconnected | Check connectivity and stream retry state. | Observed network interruption; delivery resumed after reconnect. |
+| An authorized device cannot open the stream | Inspect authentication and ownership response before debugging rendering. | Anonymous requests returned 401; unowned requests returned 403. Valid test sessions succeeded. |
+| A send appears locally but not on the other device | Check whether the server admitted the input and saved a user entry. A local optimistic bubble is not proof of admission. | Tagged test sends have durable entry IDs. Failed or ambiguous admission was not forced. |
+| The server has the message, but the other UI does not | Check that UI's SSE connection, received view, and projection. | Both projections rendered tested text states. Tool/thinking parity and release proxy behavior remain untested. |
+| Messages appear twice after retry | Check request-ID reuse and pending-message reconciliation. | No duplicates in the ordinary run. Lost HTTP responses and retry duplication remain untested risks. |
+| Saved work does not progress after a server restart | Check scheduler enablement and registered dependencies. | Current startup omits explicit resume; restart recovery was not tested. |
+| A fresh server cannot reach sign-in or chat | Check schema initialization and migrations. | The isolated fixture needed missing schema fields. This was a setup blocker, not a reproduced failure of live sync. |
+
+First determine whether the command reached Pi, whether the view reached the device, and whether the UI rendered that view. Fix the failing boundary. Do not replace the sync architecture because a device opened a different chat or because authentication rejected its request.
+
 Current owners of this behavior:
 
 | Responsibility | File |
