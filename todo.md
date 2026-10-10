@@ -1,4 +1,7 @@
+- next thing is to do multiplayer sync for saul. so that multiple users can work on the same document at the same time and see each other's changes in real time.
+
 - here use pi-ai to be provider agnostic currently we are hard coding 'azure-openai-responses' in C:\Users\dawar\projects\lali-template\src\setup\ai.ts
+
 - improve ai.ts
 - build test drive ui for saul. when anonymous users can see ui and work.
 - realtime multiplayer sync.
@@ -10,3 +13,5 @@
 - point andorid app to server url and andriod app boots from there and works just web but with android specific features like push notifications and background sync, nice ux.
 
 Device Authorization
+
+- pocket folder in saul to place random files and documents. like a pocket folder in your phone where you can put random files and documents. so that you can access them from anywhere.

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Saul architecture review</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'strict', flowchart: { useMaxWidth: true } });
+  </script>
+  <style>
+    :root { color-scheme: light; --ink:#22252a; --muted:#666b73; --line:#dddcd5; --jade:#167b62; --danger:#ae2846; }
+    * { box-sizing:border-box; } html { scroll-behavior:smooth; }
+    body { margin:0; background:#f6f5f0; color:var(--ink); font:16px/1.55 system-ui,sans-serif; }
+    main { max-width:1160px; margin:auto; padding:48px 28px; }
+    h1,h2,h3,p { margin:0; } h1 { font:52px/1.05 Georgia,serif; letter-spacing:-1.5px; }
+    h2 { font:31px/1.2 Georgia,serif; } h3 { font-size:16px; }
+    a { color:var(--jade); text-underline-offset:3px; } code { font:12px/1.6 ui-monospace,monospace; overflow-wrap:anywhere; }
+    header { padding-bottom:30px; border-bottom:1px solid var(--line); }
+    .kicker { color:var(--jade); text-transform:uppercase; font-size:12px; letter-spacing:2px; font-weight:700; margin-bottom:10px; }
+    .meta,.note { color:var(--muted); font-size:13px; } .meta { margin-top:16px; }
+    .legend { display:flex; flex-wrap:wrap; gap:20px; margin:20px 0 0; font-size:12px; color:var(--muted); }
+    .legend span { display:inline-flex; align-items:center; gap:7px; }
+    .symbol { width:20px; height:15px; border:1px solid #69717a; display:inline-block; }
+    .symbol.seam { border:0; border-top:2px dashed #69717a; height:1px; }
+    .symbol.deep { background:var(--ink); border:3px solid var(--ink); } .red { color:var(--danger); }
+    nav { display:flex; gap:20px; flex-wrap:wrap; padding:22px 0; font-size:14px; }
+    article { background:#fff; border:1px solid var(--line); border-radius:12px; margin:0 0 26px; padding:28px; }
+    .card-head { display:flex; justify-content:space-between; align-items:start; gap:16px; }
+    .number { color:var(--muted); font:13px ui-monospace,monospace; margin-bottom:7px; }
+    .badges { display:flex; gap:7px; flex-wrap:wrap; margin:12px 0 16px; }
+    .badge { border-radius:99px; padding:4px 10px; font-size:11px; font-weight:650; background:#eeeef0; }
+    .strong { background:#dcf2e8; color:#146348; } .explore { background:#fff0ca; color:#845b0b; }
+    .files { background:#f8f8f5; padding:12px 15px; border-radius:6px; margin-bottom:20px; }
+    .files a { display:block; width:fit-content; } .files .prefix { display:block; font-size:11px; color:var(--muted); }
+    .pair { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+    .diagram { border:1px solid var(--line); border-radius:8px; padding:16px; min-width:0; }
+    .diagram h3 { margin-bottom:12px; text-transform:uppercase; font-size:11px; letter-spacing:1.5px; color:var(--muted); }
+    .mermaid { margin:0; text-align:center; min-height:295px; font:12px/1.6 ui-monospace,monospace; white-space:pre-wrap; }
+    .mermaid svg { max-height:310px; }
+    .schematic { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:295px; gap:8px; }
+    .box { width:90%; padding:10px; border:1px solid #b9bdc1; border-radius:5px; text-align:center; font-size:13px; background:#fafaf8; }
+    .box small { display:block; color:var(--muted); font-size:11px; }
+    .arrow { font-size:18px; line-height:1; color:#8a8e95; }
+    .deep-module { width:94%; border:4px solid #252b32; border-radius:7px; padding:14px; color:#fff; background:#252b32; text-align:center; }
+    .deep-module strong { display:block; font-size:14px; }
+    .deep-module .inside { color:#d0d8dd; font-size:12px; padding:12px 4px; border-top:1px dashed #77838e; margin-top:10px; }
+    .seam-label { width:94%; border-top:1px dashed #84909a; padding-top:7px; text-align:center; font-size:11px; color:var(--muted); }
+    .trace { border-left:3px solid #a7b1b9; background:#f6f7f8; padding:11px 14px; font-size:13px; margin:0 0 16px; }
+    .trace.urgent { border-color:var(--danger); background:#fff4f6; }
+    .copy { display:grid; grid-template-columns:80px 1fr; gap:8px 14px; font-size:14px; }
+    .copy dt { color:var(--muted); font-weight:600; } .copy dd { margin:0; }
+    .wins { display:flex; gap:12px 25px; flex-wrap:wrap; padding:0; margin:16px 0; list-style:none; font-size:13px; color:var(--jade); }
+    details { border-top:1px solid var(--line); padding-top:12px; font-size:13px; }
+    summary { cursor:pointer; font-weight:600; } details ul { padding-left:20px; margin-bottom:0; }
+    .top { padding:28px; border:2px solid var(--jade); border-radius:12px; background:#edf6f0; }
+    .top p { margin:12px 0; max-width:850px; } footer { font-size:12px; color:var(--muted); padding:22px 0 0; }
+    @media(max-width:720px) { main { padding:28px 16px; } h1 { font-size:38px; } h2 { font-size:26px; } article { padding:20px; } .pair { grid-template-columns:1fr; } .copy { grid-template-columns:1fr; gap:3px; } .copy dd { margin-bottom:9px; } }
+  </style>
+</head>
+<body>
+<main class="mx-auto">
+  <header>
+    <div class="kicker">Architecture field notes / Saul</div>
+    <h1>Less coordination.<br>More depth.</h1>
+    <p class="meta">9 October 2026 · Review point: bb6698e · 45 recent commits inspected · Focus: conversation ownership, Android sign-in, chat delivery.</p>
+    <div class="legend">
+      <span><i class="symbol"></i> Module: behavior behind an interface</span>
+      <span><i class="symbol seam"></i> Seam: where behavior can change</span>
+      <span><i class="symbol deep"></i> Deep module: more behavior, less caller knowledge</span>
+      <span class="red">Red: policy happens too late</span>
+    </div>
+  </header>
+  <nav aria-label="Candidates"><a href="#ownership">01 Conversation ownership</a><a href="#auth">02 Device authorization</a><a href="#delivery">03 Chat delivery</a></nav>
+
+  <article id="ownership">
+    <div class="card-head"><div><div class="number">01 / Gateway</div><h2>Put ownership inside the conversation module</h2></div></div>
+    <div class="badges"><span class="badge strong">Strong</span><span class="badge">local-substitutable</span><span class="badge">Permission before mutation</span></div>
+    <div class="files">
+      <a href="file:///C:/Users/dawar/projects/Saul/src/controllers/chat.ts#L54-L76"><code>src/controllers/chat.ts:54–76</code></a>
+      <a href="file:///C:/Users/dawar/projects/Saul/src/services/chat.ts#L112-L158"><code>src/services/chat.ts:112–158</code></a>
+      <a href="file:///C:/Users/dawar/projects/Saul/src/agent/data.ts#L22-L38"><code>src/agent/data.ts:22–38</code></a>
+      <a href="file:///C:/Users/dawar/projects/Saul/src/routes/conversations.ts"><code>src/routes/conversations.ts</code></a>
+    </div>
+    <div class="pair">
+      <section class="diagram"><h3>Before / caller must remember permission</h3><pre class="mermaid">
+flowchart TD
+  H[HTTP adapter] --> C[Conversation implementation]
+  C --> F[Create fork in harness]
+  F --> D[Record fork for caller]
+  D --> P[Caller checks parent ownership]
+  P --> R[Return 403 if denied]
+  classDef late fill:#fff0f3,stroke:#ae2846,color:#ae2846;
+  class P,R late;
+      </pre></section>
+      <section class="diagram"><h3>After / one module owns the rule</h3><pre class="mermaid">
+flowchart TD
+  H[HTTP adapter] --> M[Deep conversation module]
+  M --> P[Check parent ownership]
+  P -->|Denied| R[Reject without mutation]
+  P -->|Allowed| F[Create and record fork]
+  F --> S[Return outcome]
+  classDef deep fill:#252b32,stroke:#252b32,stroke-width:4px,color:#fff;
+  class M deep;
+      </pre></section>
+    </div>
+    <div class="trace urgent"><strong>Code trace:</strong> signed-in caller supplies another owner's entry → fork is created → fork is recorded for caller → parent permission fails → HTTP 403. The rejection happens after the writes. This is an inspected call order; no live account probe was run.</div>
+    <dl class="copy">
+      <dt>Problem</dt><dd>The interface lets callers change a conversation before they check ownership.</dd>
+      <dt>Solution</dt><dd>Deepen the existing conversation module so ownership, entry resolution, and mutations stay together; keep HTTP formatting in its adapter.</dd>
+      <dt>Why depth</dt><dd>The caller no longer needs to know when permission must be checked; the implementation owns that rule at one seam.</dd>
+      <dt>Deletion test</dt><dd>Delete this responsibility and each caller must coordinate ownership, harness writes, and application records again.</dd>
+    </dl>
+    <ul class="wins"><li>Locality: one ownership decision</li><li>Leverage: all conversation callers</li><li>Tests cross the same interface</li></ul>
+    <details open><summary>Test surface and scope</summary><ul>
+      <li>No first-party Gateway test file was found under <code>src/</code>. Add caller-level cases for allowed, missing, and foreign-owned entries; a rejected fork must leave both stores unchanged.</li>
+      <li>Use isolated storage adapters for tests. Keep the existing Drizzle and harness implementation; do not add a generic repository module.</li>
+      <li>This does not make the two stores atomic. Crash recovery is a separate decision, not a claimed benefit of this refactor.</li>
+    </ul></details>
+  </article>
+
+  <article id="auth">
+    <div class="number">02 / Android</div><h2>Let the auth module own one authorization attempt</h2>
+    <div class="badges"><span class="badge strong">Strong</span><span class="badge">ports &amp; adapters</span><span class="badge">Polling and cancellation</span></div>
+    <div class="files">
+      <span class="prefix">Under android/app/src/main/java/io/github/gajendrasinghdawar/lali/</span>
+      <a href="file:///C:/Users/dawar/projects/Saul/android/app/src/main/java/io/github/gajendrasinghdawar/lali/core/auth/AuthRepository.kt#L50-L130"><code>core/auth/AuthRepository.kt:50–130</code></a>
+      <a href="file:///C:/Users/dawar/projects/Saul/android/app/src/main/java/io/github/gajendrasinghdawar/lali/feature/signin/SignInViewModel.kt#L63-L119"><code>feature/signin/SignInViewModel.kt:63–119</code></a>
+      <a href="file:///C:/Users/dawar/projects/Saul/android/app/src/main/java/io/github/gajendrasinghdawar/lali/feature/signin/SignInScreen.kt#L83-L91"><code>feature/signin/SignInScreen.kt:83–91</code></a>
+    </div>
+    <div class="pair">
+      <section class="diagram"><h3>Before / policy crosses three modules</h3><div class="schematic">
+        <div class="box">Auth repository<small>Challenge fields, fixed delay, token return</small></div><div class="arrow">↓</div>
+        <div class="box">Screen ViewModel<small>Build URL, pass expiry, translate outcome</small></div><div class="arrow">↓</div>
+        <div class="box">Browser adapter<small>Launch only when pollAttempt is zero</small></div>
+        <div class="seam-label">Caller learns transport and timing policy</div>
+      </div></section>
+      <section class="diagram"><h3>After / presentation stays outside</h3><div class="schematic">
+        <div class="box">Screen ViewModel + browser adapter<small>Present state and perform browser handoff</small></div><div class="arrow">↓</div>
+        <div class="seam-label">Auth interface / attempt policy stays inside</div>
+        <div class="deep-module"><strong>Deep auth module</strong><div class="inside">Challenge interpretation · verification URL<br>Polling delay · expiry · cancellation<br>Credential settlement</div></div>
+        <div class="box">Keystore credential adapter<small>Encryption stays in existing storage module</small></div>
+      </div></section>
+    </div>
+    <div class="trace"><strong>Code trace:</strong> server returns <code>slow_down</code> → diagnostic text changes → next delay uses the same fixed <code>pollInterval</code>. Also, Cancel resets visible state but does not cancel the launched attempt.</div>
+    <dl class="copy">
+      <dt>Problem</dt><dd>The auth interface exposes challenge details and string diagnostics, so callers must understand the protocol.</dd>
+      <dt>Solution</dt><dd>Deepen the existing auth module to own each attempt from challenge to completion or cancellation; leave browser actions with the UI adapter.</dd>
+      <dt>Why depth</dt><dd>One seam contains timing and terminal outcomes; ViewModels do not handle credentials or infer protocol state from counters.</dd>
+      <dt>Deletion test</dt><dd>Delete the auth module and polling, expiry, revocation, and credential settlement move into its callers.</dd>
+    </dl>
+    <ul class="wins"><li>Locality: attempt policy stays together</li><li>Leverage: simpler sign-in caller</li><li>Existing fake adapter remains useful</li></ul>
+    <details open><summary>Test surface and scope</summary><ul>
+      <li><code>SignInViewModelTest.kt:26–53,94–102</code> uses a fake auth adapter that returns success; it does not test real polling.</li>
+      <li>Test pending → slow-down timing, denied, expired, invalid grant, cancellation, and one browser handoff through the auth interface with controlled transport and time.</li>
+      <li>Keep one <code>:app</code> module, Navigation 3, lifecycle-aware state, direct Keystore encryption, and Context-free ViewModels.</li>
+      <li>Do not replace the chosen device authorization flow. These changes correct its implementation.</li>
+    </ul></details>
+  </article>
+
+  <article id="delivery">
+    <div class="number">03 / Web chat</div><h2>Keep message delivery behind the chat seam</h2>
+    <div class="badges"><span class="badge explore">Worth exploring</span><span class="badge">in-process</span><span class="badge">Snapshot and HTTP order</span></div>
+    <div class="files">
+      <a href="file:///C:/Users/dawar/projects/Saul/web/src/features/chat/use-chat-session.ts#L57-L83"><code>web/src/features/chat/use-chat-session.ts:57–83,102–162</code></a>
+      <a href="file:///C:/Users/dawar/projects/Saul/web/src/features/chat/ChatPage.tsx#L80-L97"><code>web/src/features/chat/ChatPage.tsx:80–97</code></a>
+      <a href="file:///C:/Users/dawar/projects/Saul/web/src/features/chat/chat-view.ts"><code>web/src/features/chat/chat-view.ts</code></a>
+      <a href="file:///C:/Users/dawar/projects/Saul/web/test/chat-view.test.ts"><code>web/test/chat-view.test.ts</code></a>
+    </div>
+    <div class="pair">
+      <section class="diagram"><h3>Before / delivery knowledge is split</h3><div class="schematic">
+        <div class="box">Chat page<small>Submit without waiting; clear draft</small></div><div class="arrow">↓</div>
+        <div class="box">React chat module<small>HTTP + SSE + pending rows + errors + sidebar events</small></div><div class="arrow">↓</div>
+        <div class="box">Snapshot projection module<small>Good depth, but tests stop here</small></div>
+        <div class="seam-label">Only content equality confirms delivery</div>
+      </div></section>
+      <section class="diagram"><h3>After / test the complete delivery behavior</h3><div class="schematic">
+        <div class="box">React presentation adapter<small>Render state; preserve draft until outcome</small></div><div class="arrow">↓</div>
+        <div class="seam-label">Chat interface / callers and tests agree</div>
+        <div class="deep-module"><strong>Deep chat delivery module</strong><div class="inside">Canonical snapshots · pending identity<br>Submission eligibility · delivery outcome<br>Keep the projection module inside</div></div>
+        <div class="box">HTTP and SSE adapters<small>Inject existing transport at the seam</small></div>
+      </div></section>
+    </div>
+    <div class="trace"><strong>Code trace:</strong> history contains “Again” → user sends “Again” → unchanged history snapshot arrives → content match removes the new pending row. The generated key is not sent to the Gateway. A separate HTTP failure also leaves the page draft cleared.</div>
+    <dl class="copy">
+      <dt>Problem</dt><dd>The projection tests do not cover the implementation that joins pending delivery, HTTP results, snapshots, and draft recovery.</dd>
+      <dt>Solution</dt><dd>Concentrate delivery policy in the existing chat responsibility and let React own presentation; retain the useful projection module.</dd>
+      <dt>Why depth</dt><dd>Callers and tests cross one chat seam instead of coordinating independent pending, stream, and draft interpretations.</dd>
+      <dt>Deletion test</dt><dd>Delete chat delivery and each caller must reconcile HTTP and snapshots; deleting the projection alone would only relocate useful implementation.</dd>
+    </dl>
+    <ul class="wins"><li>Locality: delivery rules stay together</li><li>Leverage: page and suggestion callers</li><li>Tests cover HTTP and SSE order</li></ul>
+    <details open><summary>Test surface and scope</summary><ul>
+      <li>The three existing web tests cover projection, not delivery. Add repeated-text, HTTP-before-SSE, SSE-before-HTTP, rejected-send, and edited-draft recovery cases.</li>
+      <li>Android already guards repeated text using known entry IDs; reuse the behavioral fixture cases, not Kotlin implementation in TypeScript.</li>
+      <li>Keep browser and Android transport adapters separate. Shared fixtures provide leverage without a cross-language runtime module.</li>
+      <li>No automatic message replay. Stable request identity needs Gateway support; do not claim exactly-once delivery from a local key.</li>
+    </ul></details>
+  </article>
+
+  <section class="top" id="top-recommendation">
+    <div class="kicker">Top recommendation</div><h2>01 / Conversation ownership</h2>
+    <p>Start here because a permission check currently runs after persistent writes; move that rule into the conversation implementation before adding more callers.</p>
+    <a href="#ownership">Review the evidence and before / after diagram</a>
+  </section>
+  <footer>Read-only review. No application code, account data, or credentials changed. Findings are based on source inspection, not reproduced live journeys. Proposed ownership pictures are not final interfaces. Open a test section for its evidence and limits.</footer>
+</main>
+</body>
+</html>
