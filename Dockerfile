@@ -33,7 +33,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 # Copy backend source
-COPY src/ ./src/
+COPY server/ ./server/
 COPY drizzle/ ./drizzle/
 COPY drizzle.config.ts ./
 COPY tsconfig.json ./
@@ -52,4 +52,4 @@ ENV PORT=3000
 RUN npm install -g tsx
 
 # Start the server
-CMD ["tsx", "src/server.ts"]
+CMD ["tsx", "server/server.ts"]

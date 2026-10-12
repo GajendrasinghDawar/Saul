@@ -14,4 +14,7 @@
 
 Device Authorization
 
-- pocket folder in saul to place random files and documents. like a pocket folder in your phone where you can put random files and documents. so that you can access them from anywhere.
+- pocket folder in saul to place random files and documents. like a pocket folder in your phone where you can put random files and documents. so that you can
+  access them from anywhere.
+
+- what if i use server secreate key

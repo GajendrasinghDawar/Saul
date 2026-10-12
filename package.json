@@ -4,11 +4,11 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "dev:backend": "tsx watch src/server.ts",
+    "dev:backend": "tsx watch server/server.ts",
     "dev:web": "npm run dev --prefix web",
     "dev": "concurrently -n backend,web -c blue,magenta \"npm run dev:backend\" \"npm run dev:web\"",
     "db:push": "drizzle-kit push",
-    "db:seed": "node src/seed.ts",
+    "db:seed": "tsx server/db/seed.ts",
     "format": "biome format --write .",
     "lint": "biome check .",
     "format:fix": "biome check --write ."
