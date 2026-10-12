@@ -1,5 +1,5 @@
 import type { Harness } from '@earendil-works/pi-durable'
-import { toNodeHandler } from 'better-auth/node'
+import { fromNodeHeaders, toNodeHandler } from 'better-auth/node'
 import express, { type ErrorRequestHandler } from 'express'
 import type { auth as betterAuthInstance } from './auth/auth.ts'
 import { createAuthGuard } from './middleware/authGuard.ts'
@@ -42,32 +42,40 @@ export function createApp(dependencies: AppDependencies) {
   }
   app.use('/api/secrets', settingsBodyError)
 
-  // First User / Admin-only setup lock
+  const authHandler = toNodeHandler(auth)
+  let signupPending = Promise.resolve()
+  // Serialize registration through completion so two first requests cannot
+  // both observe an empty database. Saul runs one backend instance.
   app.use('/api/auth/sign-up/email', async (req, res, next) => {
+    const previous = signupPending
+    let release = () => {}
+    signupPending = new Promise<void>(resolve => {
+      release = resolve
+    })
+    await previous
     try {
       const existingUsers = await db.select().from(user).limit(1)
-      if (existingUsers.length === 0) {
-        // Registration never grants administrator privileges.
-        return next() // Allowed: this is the very first user being created
-      }
-
-      // If users exist, only allow if the requester has an active admin session
-      const session = await auth.api.getSession({
-        headers: new Headers(req.headers as Record<string, string>),
-      })
-      if (session?.user.role !== 'admin') {
-        return res.status(403).json({
-          error: 'Setup complete. Only administrators can register new users.',
+      if (existingUsers.length > 0) {
+        const session = await auth.api.getSession({
+          headers: fromNodeHeaders(req.headers),
         })
+        if (session?.user.role !== 'admin') {
+          return res.status(403).json({
+            error:
+              'Setup complete. Only administrators can register new users.',
+          })
+        }
       }
-      next()
+      await authHandler(req, res)
     } catch (error) {
       next(error)
+    } finally {
+      release()
     }
   })
 
   // Better Auth handler - must be before CSRF
-  app.use('/api/auth', toNodeHandler(auth))
+  app.use('/api/auth', authHandler)
 
   // Health check (no auth needed)
   app.get('/health', (_req, res) => res.json({ status: 'ok' }))

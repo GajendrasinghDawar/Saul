@@ -4,6 +4,7 @@ import { betterAuth } from 'better-auth'
 import { bearer, deviceAuthorization } from 'better-auth/plugins'
 import { Resend } from 'resend'
 import { db } from '../db/index.ts'
+import { user } from '../db/schema.ts'
 import { getSecret } from '../secretsManager.ts'
 
 const fromEmail = 'onboarding@resend.dev'
@@ -20,6 +21,18 @@ export const auth = betterAuth({
     provider: 'sqlite',
   }),
   baseURL: getSecret('BETTER_AUTH_URL', 'http://localhost:3000'),
+  databaseHooks: {
+    user: {
+      create: {
+        before: async data => {
+          const existing = await db.select({ id: user.id }).from(user).limit(1)
+          return {
+            data: { ...data, role: existing.length === 0 ? 'admin' : 'user' },
+          }
+        },
+      },
+    },
+  },
   user: {
     additionalFields: {
       role: {

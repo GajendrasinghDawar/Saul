@@ -21,8 +21,12 @@ Keep database location/access, server port, deployment mode, authentication URL,
 Only the five supported service settings are loaded from the database.
 Bootstrap values must come from external configuration, not database rows.
 No users are promoted by this settings feature.
-The role field is server-controlled; sign-up and profile updates cannot grant
-admin privileges. Fresh installations need an operator-provisioned administrator.
+The first account created on an empty installation becomes the administrator.
+Public registration closes after that; only an authenticated administrator can
+register additional accounts, which receive the normal user role. Signup
+requests are serialized in the single backend process. The role field is
+server-controlled; clients cannot choose it at signup or change it through
+profile updates. Existing accounts are not automatically promoted.
 The existing bootstrap file loading behavior is unchanged; do not configure
 conflicting bootstrap values in multiple places.
 
