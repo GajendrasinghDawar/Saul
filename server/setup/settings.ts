@@ -7,7 +7,7 @@ try {
   validateEnvironment()
 } catch {
   console.error(
-    'Server settings could not be loaded. Check the encryption key and legacy migration state.'
+    'Server settings could not be loaded. Check the encryption key and stored format.'
   )
   process.exit(1)
 }

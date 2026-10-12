@@ -44,6 +44,7 @@ export function encryptSetting(name: SettingName, value: string) {
 
 function decryptSetting(name: string, value: string) {
   try {
+    if (!value.startsWith(prefix)) throw new Error()
     const data = Buffer.from(value.slice(prefix.length), 'base64')
     if (data.length < 29) throw new Error()
     const cipher = createDecipheriv(
@@ -59,7 +60,7 @@ function decryptSetting(name: string, value: string) {
     ]).toString('utf8')
   } catch {
     throw new Error(
-      'Stored settings cannot be unlocked. Check the encryption key and migration state.'
+      'Stored settings cannot be unlocked. Check the encryption key and stored format.'
     )
   }
 }
@@ -68,13 +69,8 @@ export async function loadSecrets() {
   const allSecrets = await db.select().from(secrets)
   const loaded = new Map<string, string>()
   for (const s of allSecrets) {
-    if (s.value.startsWith(prefix))
+    if (isSettingName(s.name))
       loaded.set(s.name, decryptSetting(s.name, s.value))
-    else if (isSettingName(s.name)) {
-      throw new Error(
-        'Legacy service settings require an explicit offline migration'
-      )
-    } else loaded.set(s.name, s.value) // Preserve existing bootstrap signing keys.
   }
   secretsCache.clear()
   for (const [name, value] of loaded) secretsCache.set(name, value)
