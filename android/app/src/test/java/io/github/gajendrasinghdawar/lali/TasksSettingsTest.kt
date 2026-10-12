@@ -75,6 +75,9 @@ class TasksSettingsTest {
             var fail = true
             var signOuts = 0
             override suspend fun account(): Account { if (fail) error("offline"); return Account("Test User", "user@example.test") }
+            override suspend fun settings() = emptyList<ServerSetting>()
+            override suspend fun save(name: String, value: String) = SettingResult("live", false)
+            override suspend fun delete(name: String, password: String) = SettingResult("live", false)
             override suspend fun signOut() { signOuts++; if (fail) error("offline") }
         }
         val vm = SettingsViewModel(fake)

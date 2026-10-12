@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm'
 import { Resend } from 'resend'
 import { db } from '../db/index.ts'
 import { approvals, todos } from '../db/schema.ts'
+import { getSecret } from '../secretsManager.ts'
 import {
   DEFAULT_EMAIL_FROM,
   DEFAULT_EMAIL_SUBJECT,
@@ -56,7 +57,8 @@ export const sendDigestEmailTool = defineTool({
   execute: async (args, api) => {
     api.output(`Sending email...\n`)
 
-    if (!process.env.RESEND_API_KEY) {
+    const emailKey = getSecret('RESEND_API_KEY')
+    if (!emailKey) {
       if (process.env.NODE_ENV === 'production') {
         throw new Error(
           'RESEND_API_KEY is required in production to send emails.'
@@ -68,12 +70,12 @@ export const sendDigestEmailTool = defineTool({
       }
     }
 
-    const resend = new Resend(process.env.RESEND_API_KEY)
+    const resend = new Resend(emailKey)
 
     // We use the api.taskId as our Idempotency Key!
     const { data, error } = await resend.emails.send({
       from: DEFAULT_EMAIL_FROM,
-      to: process.env.MY_EMAIL_ADDRESS || 'delivered@resend.dev',
+      to: getSecret('MY_EMAIL_ADDRESS', 'delivered@resend.dev'),
       subject: DEFAULT_EMAIL_SUBJECT,
       text: args.body,
       headers: { 'Idempotency-Key': String(api.taskId) },

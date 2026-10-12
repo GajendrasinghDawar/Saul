@@ -6,6 +6,7 @@ import {
 } from '@earendil-works/pi-durable'
 
 import { Resend } from 'resend'
+import { getSecret } from '../secretsManager.ts'
 
 type ReminderInput = { message: string; at: number }
 type ReminderState = { phase: 'wait' } | { phase: 'remind' }
@@ -16,7 +17,8 @@ export interface NotificationGateway {
 
 export const ResendNotificationGateway: NotificationGateway = {
   async sendReminder(id: string, message: string) {
-    if (!process.env.RESEND_API_KEY) {
+    const emailKey = getSecret('RESEND_API_KEY')
+    if (!emailKey) {
       if (process.env.NODE_ENV === 'production') {
         throw new Error(
           'RESEND_API_KEY is required in production to send reminders.'
@@ -26,10 +28,10 @@ export const ResendNotificationGateway: NotificationGateway = {
       return
     }
 
-    const resend = new Resend(process.env.RESEND_API_KEY)
+    const resend = new Resend(emailKey)
     const { data, error } = await resend.emails.send({
       from: 'Lali <onboarding@resend.dev>',
-      to: process.env.MY_EMAIL_ADDRESS || 'delivered@resend.dev',
+      to: getSecret('MY_EMAIL_ADDRESS', 'delivered@resend.dev'),
       subject: 'Lali Reminder',
       text: `You asked me to remind you:\n\n${message}`,
       headers: { 'Idempotency-Key': id },

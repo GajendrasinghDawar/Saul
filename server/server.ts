@@ -1,19 +1,11 @@
-import dotenv from 'dotenv'
-import { loadSecrets } from './secretsManager.ts'
+import './setup/settings.ts'
+import { createApp } from './app.ts'
+import { auth } from './auth/auth.ts'
+import { getSecret } from './secretsManager.ts'
+import { setupAiModel } from './setup/ai.ts'
 import { setupDurableHarness } from './setup/durable.ts'
 
-dotenv.config({ override: true })
-
 async function startServer() {
-  await loadSecrets()
-
-  const { validateEnvironment } = await import('./setup/env.ts')
-  validateEnvironment()
-
-  const { setupAiModel } = await import('./setup/ai.ts')
-  const { auth } = await import('./auth/auth.ts')
-  const { createApp } = await import('./app.ts')
-
   const { models, providerName, modelId } = setupAiModel()
   const harness = await setupDurableHarness(models)
 
@@ -23,7 +15,6 @@ async function startServer() {
     modelConfig: { providerName, modelId },
   })
 
-  const { getSecret } = await import('./secretsManager.ts')
   const port = getSecret('PORT', '3000')
 
   app.listen(port, () => {

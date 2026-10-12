@@ -1,3 +1,4 @@
+import '../setup/settings.ts'
 import cookieParser from 'cookie-parser'
 import { doubleCsrf } from 'csrf-csrf'
 import express from 'express'
@@ -39,6 +40,8 @@ const csrfConfig = doubleCsrf({
     secure: getSecret('NODE_ENV') === 'production',
   },
 })
+
+export const cookieCsrfProtection = csrfConfig.doubleCsrfProtection
 
 export const doubleCsrfProtection = (
   req: express.Request,

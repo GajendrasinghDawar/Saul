@@ -1,6 +1,6 @@
 import type { Harness } from '@earendil-works/pi-durable'
 import { toNodeHandler } from 'better-auth/node'
-import express from 'express'
+import express, { type ErrorRequestHandler } from 'express'
 import type { auth as betterAuthInstance } from './auth/auth.ts'
 import { createAuthGuard } from './middleware/authGuard.ts'
 import {
@@ -11,7 +11,7 @@ import {
 } from './middleware/security.ts'
 import { createChatRouter } from './routes/chat.ts'
 import { createConversationsRouter } from './routes/conversations.ts'
-import { secretsRouter } from './routes/secrets.ts'
+import { createSecretsRouter } from './routes/secrets.ts'
 import { createTasksRouter } from './routes/tasks.ts'
 
 export type AppDependencies = {
@@ -36,13 +36,18 @@ export function createApp(dependencies: AppDependencies) {
   // Security middleware
   app.use(securityMiddleware)
 
+  const settingsBodyError: ErrorRequestHandler = (_error, _req, res, _next) => {
+    res.setHeader('Cache-Control', 'no-store')
+    res.status(400).json({ error: 'Invalid settings request body' })
+  }
+  app.use('/api/secrets', settingsBodyError)
+
   // First User / Admin-only setup lock
   app.use('/api/auth/sign-up/email', async (req, res, next) => {
     try {
       const existingUsers = await db.select().from(user).limit(1)
       if (existingUsers.length === 0) {
-        // Automatically make the first user an admin
-        if (req.body) req.body.role = 'admin'
+        // Registration never grants administrator privileges.
         return next() // Allowed: this is the very first user being created
       }
 
@@ -72,6 +77,9 @@ export function createApp(dependencies: AppDependencies) {
     res.json({ csrfToken: generateCsrfToken(req, res) })
   })
 
+  // Settings authenticate bearer and cookie requests separately before CSRF.
+  app.use('/api/secrets', createSecretsRouter(auth))
+
   // Auth middleware - protects all remaining /api routes
   app.use('/api', createAuthGuard(auth))
 
@@ -82,7 +90,6 @@ export function createApp(dependencies: AppDependencies) {
   )
   app.use('/api/tasks', createTasksRouter(dependencies))
   app.use('/api/conversations', createConversationsRouter(dependencies))
-  app.use('/api/secrets', secretsRouter)
 
   // Serve static files in production
   const __filename = fileURLToPath(import.meta.url)

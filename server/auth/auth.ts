@@ -1,3 +1,4 @@
+import '../setup/settings.ts'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { betterAuth } from 'better-auth'
 import { bearer, deviceAuthorization } from 'better-auth/plugins'
@@ -5,8 +6,6 @@ import { Resend } from 'resend'
 import { db } from '../db/index.ts'
 import { getSecret } from '../secretsManager.ts'
 
-const resendApiKey = getSecret('RESEND_API_KEY')
-const resend = resendApiKey ? new Resend(resendApiKey) : null
 const fromEmail = 'onboarding@resend.dev'
 
 export const auth = betterAuth({
@@ -26,6 +25,7 @@ export const auth = betterAuth({
       role: {
         type: 'string',
         required: false,
+        input: false,
         defaultValue: 'user',
       },
     },
@@ -61,10 +61,10 @@ export const auth = betterAuth({
     resetPasswordTokenExpiresIn: 60 * 30, // 30 minutes
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
-      if (!resend) {
-        console.log(`[Auth] Password reset link for ${user.email}: ${url}`)
-        return
-      }
+      const key = getSecret('RESEND_API_KEY')
+      if (!key)
+        throw new Error('Password reset email service is not configured')
+      const resend = new Resend(key)
       await resend.emails.send({
         from: fromEmail,
         to: user.email,
