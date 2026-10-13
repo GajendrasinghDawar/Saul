@@ -1,11 +1,5 @@
-import { Paperclip, Send, Square, X } from 'lucide-react'
-import {
-  type ChangeEvent,
-  type FormEvent,
-  type KeyboardEvent,
-  useEffect,
-  useRef,
-} from 'react'
+import { Paperclip, Send, X } from 'lucide-react'
+import { type FormEvent, type KeyboardEvent, type RefObject, useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { Textarea } from '../../components/ui/Textarea'
 import type { ArtifactCapabilities, Attachment } from '../../lib/api'
@@ -18,6 +12,8 @@ export type StagedFile = {
   uploading: boolean
 }
 
+export type ComposerReply = { entryId: string; role: string; text: string }
+
 type ComposerProps = {
   draft: string
   setDraft: (value: string) => void
@@ -25,194 +21,100 @@ type ComposerProps = {
   sending: boolean
   capabilities: ArtifactCapabilities | null
   attachmentNotice: string
-  fileInputRef: React.RefObject<HTMLInputElement | null>
-  onFiles: (event: ChangeEvent<HTMLInputElement>) => void
+  fileInputRef: RefObject<HTMLInputElement | null>
+  onFilesSelected: (files: File[]) => void
   onRemoveFile: (file: File) => void
   onSubmit: (event: FormEvent) => void
-  onStop: () => void
   activeRunId: string | null
-  isCancelling: boolean
   connectionStatus: string
+  reply?: ComposerReply | null
+  onRemoveReply?: () => void
 }
 
-export function Composer({
-  draft,
-  setDraft,
-  stagedFiles,
-  sending,
-  capabilities,
-  attachmentNotice,
-  fileInputRef,
-  onFiles,
-  onRemoveFile,
-  onSubmit,
-  onStop,
-  activeRunId,
-  isCancelling,
-  connectionStatus,
-}: ComposerProps) {
+function FilePreview({ file }: { file: File }) {
+  const [preview, setPreview] = useState<{ file: File; url: string } | null>(null)
+  useEffect(() => {
+    if (!file.type.startsWith('image/')) return
+    const url = URL.createObjectURL(file)
+    setPreview({ file, url })
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+  return preview?.file === file ? (
+    <img src={preview.url} alt='' className='size-12 shrink-0 rounded-lg object-cover' />
+  ) : null
+}
+
+export function Composer({ draft, setDraft, stagedFiles, sending, capabilities,
+  attachmentNotice, fileInputRef, onFilesSelected, onRemoveFile, onSubmit,
+  activeRunId, connectionStatus, reply, onRemoveReply }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const uploading = stagedFiles.some(file => file.uploading)
   const hasUploadError = stagedFiles.some(file => file.error)
-  const canSend =
-    (draft.trim().length > 0 || stagedFiles.some(file => file.attachment)) &&
-    !sending &&
-    connectionStatus === 'connected' &&
-    !uploading &&
-    !hasUploadError
-  // biome-ignore lint/correctness/useExhaustiveDependencies: draft changes update the DOM scrollHeight before resizing.
+  const canSend = (draft.trim().length > 0 || stagedFiles.some(file => file.attachment)) &&
+    !sending && connectionStatus === 'connected' && !uploading && !hasUploadError
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resize after draft updates the DOM.
   useEffect(() => {
     const textarea = textareaRef.current
     if (textarea) {
       textarea.style.height = '0px'
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`
+      textarea.style.height = `${Math.max(72, Math.min(textarea.scrollHeight, 240))}px`
     }
   }, [draft])
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (
-      event.key === 'Enter' &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing &&
-      event.nativeEvent.keyCode !== 229
-    ) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) {
       event.preventDefault()
       if (canSend) event.currentTarget.form?.requestSubmit()
     }
   }
+  const status = connectionStatus !== 'connected'
+    ? connectionStatus === 'connecting' ? 'Connecting…' : 'Offline — reconnecting…'
+    : uploading ? 'Uploading attachments…' : hasUploadError ? 'Remove failed attachments to send'
+    : sending ? 'Sending…' : activeRunId ? 'Saul is responding' : 'Ready to send'
 
   return (
-    <div className='w-full bg-linear-to-t from-slate2 via-slate2 to-transparent px-4 pb-2.5 pt-2 md:px-2 lg:px-0'>
-      <form
-        onSubmit={onSubmit}
-        className='mx-auto w-full md:max-w-2xl lg:max-w-3xl'
-      >
-        <div className='relative rounded-md border border-slate7/40 bg-slate3 shadow-2 backdrop-blur-[2px] transition-all duration-200 focus-within:border-slate6 focus-within:shadow-3 after:pointer-events-none after:absolute after:inset-[3px] after:rounded-[10px] after:border after:border-dashed after:border-slate6/30'>
-          <div
-            aria-hidden='true'
-            className='pointer-events-none absolute inset-0 rounded-md bg-radial-[at_12%_0%] from-whiteA3 via-whiteA1 to-transparent'
-          />
-          <div
-            aria-hidden='true'
-            className='pointer-events-none absolute inset-x-4 top-0 h-px bg-linear-to-r from-transparent via-slate6 to-transparent'
-          />
-          {stagedFiles.length > 0 && (
-            <div className='relative z-10 flex flex-wrap gap-2 px-4 pt-4'>
-              {stagedFiles.map(file => (
-                <div
-                  key={file.id}
-                  className={`flex max-w-full items-center gap-2 rounded-md border bg-slate4 px-2 py-1 text-xs ${file.error ? 'border-red8 text-red11' : 'border-slate6 text-slate11'}`}
-                >
-                  <span className='truncate'>{file.file.name}</span>
-                  <span>
-                    {file.uploading ? 'Uploading' : (file.error ?? '')}
-                  </span>
-                  <button
-                    type='button'
-                    disabled={sending}
-                    onClick={() => onRemoveFile(file.file)}
-                    aria-label={`Remove ${file.file.name}`}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-              ))}
+    <div className='w-full bg-slate2 px-4 pb-3 pt-3 md:px-2 lg:px-0'>
+      <form onSubmit={event => { if (!canSend) { event.preventDefault(); return }; onSubmit(event) }}
+        onDragOver={event => { if (event.dataTransfer.types.includes('Files')) event.preventDefault() }}
+        onDrop={event => {
+          if (!event.dataTransfer.types.includes('Files')) return
+          event.preventDefault()
+          onFilesSelected(Array.from(event.dataTransfer.files))
+        }}
+        onPaste={event => {
+          const files = Array.from(event.clipboardData.files)
+          if (!files.length) return
+          event.preventDefault()
+          onFilesSelected(files)
+        }}
+        className='mx-auto w-full md:max-w-2xl lg:max-w-3xl'>
+        <div className='overflow-hidden rounded-2xl border border-slate6 bg-slate3 shadow-1 transition-colors focus-within:border-jade8 motion-reduce:transition-none'>
+          {reply && (
+            <div className='mx-4 mt-4 flex items-center gap-3 rounded-lg border-l-2 border-jade8 bg-slate4 px-3 py-2 text-sm'>
+              <div className='min-w-0 flex-1'><p className='text-xs font-medium text-jade11'>Replying to {reply.role}</p><p className='line-clamp-2 text-slate11'>{reply.text}</p></div>
+              {onRemoveReply && <Button size='icon' variant='ghost' className='size-11 shrink-0' aria-label='Remove reply' onClick={onRemoveReply}><X size={16} /></Button>}
             </div>
           )}
-          {(attachmentNotice ||
-            (capabilities?.enabled && !capabilities.supportsImages)) && (
-            <p
-              role='status'
-              className='relative z-10 px-4 pt-3 text-xs text-slate11'
-            >
-              {attachmentNotice ||
-                'Images are disabled for this model. For a custom image-capable deployment, set AZURE_OPENAI_INPUT to text,image and restart.'}
-            </p>
-          )}
-          <div className='relative z-10 px-4 pb-2 pt-4'>
-            <Textarea
-              ref={textareaRef}
-              value={draft}
-              disabled={sending}
-              onChange={event => setDraft(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder='Message Saul...'
-              rows={1}
-              className='max-h-[120px] min-h-6 overflow-y-auto'
-              aria-label='Message'
-            />
+          {stagedFiles.length > 0 && <div className='flex flex-wrap gap-2 px-4 pt-4'>
+            {stagedFiles.map(file => <div key={file.id} className={`flex max-w-full items-center gap-2 rounded-xl border bg-slate4 p-2 text-xs ${file.error ? 'border-red8 text-red11' : 'border-slate6 text-slate11'}`}>
+              <FilePreview file={file.file} />
+              <div className='min-w-0'><p className='max-w-48 truncate'>{file.file.name}</p><p>{file.error ? `Upload failed: ${file.error}` : file.uploading ? 'Uploading…' : file.attachment ? 'Attached' : 'Waiting to upload'}</p></div>
+              <Button size='icon' variant='ghost' className='size-11 shrink-0' disabled={sending} onClick={() => onRemoveFile(file.file)} aria-label={`Remove ${file.file.name}`}><X size={16} /></Button>
+            </div>)}
+          </div>}
+          {(attachmentNotice || !capabilities?.enabled || !capabilities.supportsImages) && <p role='status' className='px-4 pt-3 text-xs text-slate11'>{attachmentNotice || (!capabilities ? 'Checking attachment availability…' : !capabilities.enabled ? 'Attachments unavailable. You can still send text.' : 'This model accepts text files only; images are unavailable.')}</p>}
+          <div className='px-4 pb-2 pt-4'>
+            <Textarea ref={textareaRef} value={draft} disabled={sending} onChange={event => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder='Message Saul…' rows={2} className='min-h-[72px] max-h-[240px] overflow-y-auto py-1 text-base leading-7' aria-label='Message' />
           </div>
-          <div className='relative z-10 flex items-center justify-between px-4 pb-3 pt-1'>
-            <div className='flex items-center gap-2 text-[10px] uppercase tracking-[.18em] text-slate10'>
-              <span
-                className={`size-1.5 rounded-full ${connectionStatus === 'disconnected' ? 'bg-red9' : connectionStatus === 'connecting' ? 'animate-pulse bg-yellow9' : activeRunId || uploading ? 'animate-pulse bg-jade9' : 'bg-slate8'}`}
-              />
-              {connectionStatus === 'disconnected'
-                ? 'Reconnecting...'
-                : connectionStatus === 'connecting'
-                  ? 'Connecting...'
-                  : uploading
-                    ? 'Uploading'
-                    : isCancelling
-                      ? 'Cancelling...'
-                      : activeRunId
-                        ? 'Generating response'
-                        : 'Ready'}
+          <div className='flex items-center justify-between gap-3 border-t border-slate5 px-3 py-2'>
+            <div className='flex min-w-0 items-center gap-2'>
+              <Button size='icon' variant='ghost' className='size-11 shrink-0' onClick={() => fileInputRef.current?.click()} aria-label='Attach files' disabled={sending || !capabilities?.enabled || stagedFiles.length >= Math.min(4, capabilities.maxFilesPerMessage)} title={attachmentNotice || 'Attach images or text files'}><Paperclip size={18} /></Button>
+              <span className='text-xs text-slate11' role='status'>{status}</span>
             </div>
-            <div className='flex gap-2'>
-              <Button
-                size='icon'
-                variant='ghost'
-                onClick={() => fileInputRef.current?.click()}
-                aria-label='Attach file'
-                disabled={
-                  sending ||
-                  !capabilities?.enabled ||
-                  stagedFiles.length >=
-                    Math.min(4, capabilities.maxFilesPerMessage)
-                }
-                title={
-                  attachmentNotice ||
-                  'Up to 4 files: images up to 5 MiB; text up to 64 KiB'
-                }
-              >
-                <Paperclip size={15} />
-              </Button>
-              <input
-                ref={fileInputRef}
-                className='hidden'
-                type='file'
-                multiple
-                accept={capabilities?.supportedMimeTypes
-                  .filter(
-                    mime =>
-                      capabilities.supportsImages || !mime.startsWith('image/')
-                  )
-                  .join(',')}
-                onChange={onFiles}
-              />
-              {activeRunId && !draft.trim().length && !stagedFiles.length ? (
-                <Button
-                  size='icon'
-                  variant='secondary'
-                  onClick={onStop}
-                  aria-label='Stop generation'
-                >
-                  <Square size={12} className='text-crimson11' />
-                </Button>
-              ) : (
-                <Button
-                  size='icon'
-                  variant='secondary'
-                  type='submit'
-                  disabled={!canSend}
-                  aria-label='Send message'
-                >
-                  <Send size={14} />
-                </Button>
-              )}
-            </div>
+            <input ref={fileInputRef} className='hidden' type='file' multiple accept={capabilities?.supportedMimeTypes.filter(mime => capabilities.supportsImages || !mime.startsWith('image/')).join(',')} onChange={event => { onFilesSelected(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = '' }} />
+            <Button size='icon' variant='secondary' className='size-11 shrink-0 border-jade7 bg-jade3 text-jade11 hover:bg-jade4' type='submit' disabled={!canSend} aria-label='Send message'><Send size={18} /></Button>
           </div>
         </div>
+        <p className='hidden px-4 pt-2 text-xs text-slate9 md:block'>Enter to send · Shift + Enter for a new line</p>
       </form>
     </div>
   )

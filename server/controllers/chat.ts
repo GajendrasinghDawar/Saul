@@ -5,10 +5,14 @@ import {
   type EntryId,
 } from '@earendil-works/pi-durable'
 import type { Request, Response } from 'express'
+import { asc, eq } from 'drizzle-orm'
 import { isConversationOwner } from '../agent/data.ts'
 import type { AppDependencies } from '../app.ts'
+import { db } from '../db/index.ts'
+import { userConversations } from '../db/schema.ts'
 import { AttachmentError } from '../services/attachments.ts'
 import { ChatService } from '../services/chat.ts'
+import { resolveReply, searchHistory } from '../services/chat-history.ts'
 
 export function createChatController({
   harness,
@@ -30,7 +34,14 @@ export function createChatController({
         whenBusy,
         attachmentIds = [],
         requestId,
+        replyToEntryId,
       } = req.body ?? {}
+      if (replyToEntryId !== undefined && (typeof replyToEntryId !== 'number' || !Number.isSafeInteger(replyToEntryId) || replyToEntryId < 1 || !conversationId)) {
+        return res.status(400).json({ error: 'Replies require a canonical entry ID and target conversation ID.' })
+      }
+      if (conversationId !== undefined && (!Number.isSafeInteger(Number(conversationId)) || Number(conversationId) < 1)) {
+        return res.status(400).json({ error: 'Invalid conversation ID.' })
+      }
       if (
         requestId !== undefined &&
         (typeof requestId !== 'string' ||
@@ -73,6 +84,16 @@ export function createChatController({
         )
         if (!conv)
           return res.status(404).json({ error: 'Conversation not found' })
+        // Ownership is already checked. Retry the original admitted submission,
+        // even if a later request body names a different reply or attachment.
+        if (requestId) {
+          const original = await chatService.existingSubmission(targetConvId, requestId)
+          if (original) return res.json({ success: true, result: await original.wait(BACKGROUND_CONTEXT) })
+        }
+        const reply = replyToEntryId === undefined ? undefined : await resolveReply(harness, targetConvId, replyToEntryId)
+        if (replyToEntryId !== undefined && !reply) {
+          return res.status(404).json({ error: 'Referenced message is not visible in this conversation.' })
+        }
         const agent = await conv.agent(BACKGROUND_CONTEXT)
         const ref = agent.model
         const model = ref
@@ -88,7 +109,8 @@ export function createChatController({
           message,
           whenBusy,
           files,
-          requestId
+          requestId,
+          reply
         )
         if (!settled)
           return res.status(404).json({ error: 'Conversation not found' })
@@ -104,6 +126,22 @@ export function createChatController({
           error:
             'Could not confirm message delivery. Check the transcript before retrying.',
         })
+      }
+    },
+
+    async search(req: Request, res: Response) {
+      const q = req.query.q
+      const cursor = req.query.cursor
+      if (typeof q !== 'string' || !q.trim() || q.length > 200 || (cursor !== undefined && (typeof cursor !== 'string' || cursor.length > 100 || !/^\d+:\d*$/.test(cursor)))) {
+        return res.status(400).json({ error: 'Use a search query of 1–200 characters and a valid cursor.' })
+      }
+      const conversations = await db.select({ conversationId: userConversations.conversationId, title: userConversations.title }).from(userConversations).where(eq(userConversations.userId, String(res.locals.userId))).orderBy(asc(userConversations.conversationId))
+      res.setHeader('Cache-Control', 'no-store')
+      try {
+        return res.json(await searchHistory(harness, conversations, q.trim(), cursor))
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Invalid search cursor.') return res.status(400).json({ error: error.message })
+        return res.status(500).json({ error: 'Could not search history.' })
       }
     },
 
@@ -167,10 +205,10 @@ export function createChatController({
       }
 
       const view = await conv.viewState(BACKGROUND_CONTEXT)
-      writeEvent({ type: 'init', view: view.value })
+      writeEvent({ type: 'init', conversationId: String(conv.id), view: view.value })
 
       const unsubscribe = view.subscribe(value => {
-        writeEvent({ type: 'update', view: value })
+        writeEvent({ type: 'update', conversationId: String(conv.id), view: value })
       })
 
       req.on('close', () => {

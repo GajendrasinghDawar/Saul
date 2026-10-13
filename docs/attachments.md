@@ -19,9 +19,10 @@ used again in chats owned by the same account, including a fork of a chat.
 
 Create a private bucket with your S3 provider. Block public access. Give Saul a
 dedicated credential with `s3:PutObject` and `s3:GetObject` access to
-`saul/attachments/*` in that bucket. The SDK uses `HeadObject` for file metadata;
-this uses the same object-read permission. Saul does not need bucket creation,
-listing, deletion, or public ACL permissions.
+`saul/attachments/*` in that bucket. Metadata checks use `GetObject` headers and
+close the response body without buffering it. This supports services that
+permit GET but reject HEAD. Saul does not need bucket creation, listing,
+deletion, or public ACL permissions.
 
 In web or Android Settings, set:
 

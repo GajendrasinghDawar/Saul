@@ -1,3 +1,5 @@
+- learn appcodebase.
+
 - next thing is to do multiplayer sync for saul. so that multiple users can work on the same document at the same time and see each other's changes in real time.
 
 - here use pi-ai to be provider agnostic currently we are hard coding 'azure-openai-responses' in C:\Users\dawar\projects\lali-template\src\setup\ai.ts
@@ -18,3 +20,9 @@ Device Authorization
   access them from anywhere.
 
 - what if i use server secreate key
+
+- rollback options if something goes wrong. like if we deploy a new version and it breaks something, we should have a way to rollback to the previous version.
+
+- animated icon while messages apears on chat.
+
+- oklch colors for android app and web

@@ -34,7 +34,7 @@ async function close(server: Server) {
 }
 
 /** In-memory S3 HTTP fixture, not a substitute for testing a chosen S3 provider. */
-async function fixture() {
+async function fixture(headForbidden = false) {
   const objects = new Map<
     string,
     { data: Buffer; mime: string; filename: string }
@@ -45,6 +45,10 @@ async function fixture() {
         'AWS4-HMAC-SHA256 Credential=fixture/'
       )
     ) {
+      res.writeHead(403).end()
+      return
+    }
+    if (req.method === 'HEAD' && headForbidden) {
       res.writeHead(403).end()
       return
     }
@@ -109,8 +113,8 @@ async function fixture() {
   }
 }
 
-test('S3 uploads become private references and hydrate after the application restarts', async t => {
-  const f = await fixture()
+test('S3 uploads remain usable when HEAD is forbidden and hydrate after the application restarts', async t => {
+  const f = await fixture(true)
   t.after(f.close)
   async function upload(name: string, mime: string, data: Buffer) {
     const response = await fetch(`${f.baseUrl}/api/artifacts`, {

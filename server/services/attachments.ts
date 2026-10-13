@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto'
 import { Readable } from 'node:stream'
 import {
   GetObjectCommand,
-  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -116,12 +115,15 @@ export class AttachmentStore {
     const client = this.configured()
     try {
       const object = await client.send(
-        new HeadObjectCommand({
+        new GetObjectCommand({
           Bucket: this.bucket,
           Key: this.key(userId, id),
         }),
         { abortSignal: AbortSignal.timeout(30_000) }
       )
+      // Some S3-compatible services reject HEAD but support authenticated GET.
+      // Only headers are needed here; do not buffer the response body.
+      if (object.Body instanceof Readable) object.Body.destroy()
       return metadata(id, object)
     } catch (error) {
       throw storageError(error)
