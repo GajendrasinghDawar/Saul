@@ -8,6 +8,12 @@ export const settingDefinitions = {
   MY_EMAIL_ADDRESS: { kind: 'env', applyMode: 'live' },
   AZURE_OPENAI_BASE_URL: { kind: 'env', applyMode: 'restart' },
   AZURE_OPENAI_MODEL: { kind: 'env', applyMode: 'restart' },
+  AZURE_OPENAI_INPUT: { kind: 'env', applyMode: 'restart' },
+  S3_ENDPOINT: { kind: 'env', applyMode: 'restart' },
+  S3_REGION: { kind: 'env', applyMode: 'restart' },
+  S3_BUCKET: { kind: 'env', applyMode: 'restart' },
+  S3_ACCESS_KEY_ID: { kind: 'secret', applyMode: 'restart' },
+  S3_SECRET_ACCESS_KEY: { kind: 'secret', applyMode: 'restart' },
 } as const
 export type SettingName = keyof typeof settingDefinitions
 const secretsCache = new Map<string, string>()
@@ -97,7 +103,11 @@ export function settingStatus(name: SettingName) {
   const definition = settingDefinitions[name]
   const value = getSecret(name)
   const effective =
-    name === 'AZURE_OPENAI_MODEL' ? value || 'gpt-6-luna' : value
+    name === 'AZURE_OPENAI_MODEL'
+      ? value || 'gpt-6-luna'
+      : name === 'S3_REGION'
+        ? value || 'us-east-1'
+        : value
   return {
     name,
     ...definition,
@@ -130,11 +140,22 @@ export function validateSettingValue(
     return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
   if (name === 'AZURE_OPENAI_MODEL')
     return value.length <= 256 && /^[a-zA-Z0-9._-]+$/.test(value)
-  if (name === 'AZURE_OPENAI_BASE_URL') {
+  if (name === 'AZURE_OPENAI_INPUT')
+    return value === 'text' || value === 'text,image'
+  if (name === 'S3_REGION') return /^[a-z0-9-]{1,64}$/.test(value)
+  if (name === 'S3_BUCKET')
+    return (
+      /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(value) && !value.includes('..')
+    )
+  if (name === 'AZURE_OPENAI_BASE_URL' || name === 'S3_ENDPOINT') {
     try {
       const url = new URL(value)
       return (
-        url.protocol === 'https:' &&
+        (url.protocol === 'https:' ||
+          (name === 'S3_ENDPOINT' &&
+            getSecret('NODE_ENV') !== 'production' &&
+            url.protocol === 'http:' &&
+            ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) &&
         !url.username &&
         !url.password &&
         !url.search &&

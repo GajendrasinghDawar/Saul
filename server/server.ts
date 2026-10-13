@@ -3,15 +3,19 @@ import { createApp } from './app.ts'
 import { auth } from './auth/auth.ts'
 import { getSecret } from './secretsManager.ts'
 import { setupAiModel } from './setup/ai.ts'
+import { setupAttachments } from './setup/attachments.ts'
 import { setupDurableHarness } from './setup/durable.ts'
 
 async function startServer() {
   const { models, providerName, modelId } = setupAiModel()
-  const harness = await setupDurableHarness(models)
+  const attachments = setupAttachments()
+  const harness = await setupDurableHarness(models, attachments)
 
   const app = createApp({
     harness,
     auth,
+    attachments,
+    models,
     modelConfig: { providerName, modelId },
   })
 

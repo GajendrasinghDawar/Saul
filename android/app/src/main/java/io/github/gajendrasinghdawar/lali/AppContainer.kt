@@ -26,6 +26,7 @@ class AppContainer(context: Context, gatewayBaseUrl: String) {
     val gatewayClient = gatewayBaseUrl.takeIf { it.isNotBlank() }?.let { GatewayClient(httpClient, it) }
     val authRepository: AuthRepository = DefaultAuthRepository(httpClient, tokenRepository, gatewayBaseUrl)
     val conversationRepository = GatewayConversationRepository(api)
+    val artifactRepository = io.github.gajendrasinghdawar.lali.data.chat.GatewayArtifactRepository(api, context.applicationContext.contentResolver)
     val taskRepository = GatewayTaskRepository(api)
     val settingsRepository = GatewaySettingsRepository(api, authRepository)
 }

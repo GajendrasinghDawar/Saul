@@ -18,6 +18,30 @@ import org.junit.*
 
 class ChatScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun attachmentDraftStatesAndTranscriptMetadata() {
+        val file = Attachment("file-1", "notes.md", "text/markdown", 128)
+        val state = mutableStateOf(ChatUiState(
+            conversation = ConversationState(ChatProjection(listOf(ChatMessage("1", MessageRole.User, "Read this", attachments = listOf(file)))), ConnectionStatus.Online),
+            attachments = AttachmentDraft(ArtifactCapabilities(true, SUPPORTED_MIME_TYPES), listOf(DraftAttachment("uploading"))),
+        ))
+        compose.setContent { LaliTheme {
+            AppShell(ShellDestination.Conversations, {}, {}, title = "Files", connection = ConnectionStatus.Online) {
+                ChatScreen(state.value, onRemoveFile = { key -> state.value = state.value.copy(attachments = state.value.attachments.copy(files = state.value.attachments.files.filterNot { it.key == key })) })
+            }
+        } }
+        compose.onNodeWithText("notes.md").assertExists()
+        compose.onNodeWithText("Uploading file…").assertExists()
+        compose.onNodeWithText("Send").assertIsNotEnabled()
+        capture("chat-attachment-uploading.png")
+        compose.runOnIdle { state.value = state.value.copy(attachments = state.value.attachments.copy(files = listOf(DraftAttachment("failed", uploading = false, error = "File exceeds the 5 MiB limit.")))) }
+        compose.onNodeWithText("File exceeds the 5 MiB limit.").assertExists()
+        capture("chat-attachment-error.png")
+        compose.onNodeWithText("Remove").performClick()
+        compose.onNodeWithText("File exceeds the 5 MiB limit.").assertDoesNotExist()
+        compose.runOnIdle { state.value = state.value.copy(attachments = state.value.attachments.copy(files = listOf(DraftAttachment("ready", file, uploading = false)))) }
+        compose.onNodeWithText("Send").assertIsEnabled()
+        capture("chat-attachment-ready.png")
+    }
     @Test fun thinkingDisclosureToolsAndScrollableCode() {
         val codeLine = "val result = notes.search(query = \"${"weekend plans ".repeat(20)}\")"
         val message = ChatMessage("12", MessageRole.Assistant, "A small example:\n\n```kotlin\n$codeLine\n```", thinking = "Search the notes before answering.", tools = listOf(

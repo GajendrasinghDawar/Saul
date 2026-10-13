@@ -1,6 +1,9 @@
 package io.github.gajendrasinghdawar.lali.feature.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -24,6 +27,7 @@ import io.github.gajendrasinghdawar.lali.ui.components.StatusIndicator
 import io.github.gajendrasinghdawar.lali.ui.components.ConnectionStatus
 import io.github.gajendrasinghdawar.lali.ui.components.LaliInput
 import io.github.gajendrasinghdawar.lali.ui.components.LaliPrimaryButton
+import java.util.Locale
 
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, onConnectionChange: (ConnectionStatus) -> Unit = {}) {
@@ -31,11 +35,19 @@ fun ChatScreen(viewModel: ChatViewModel, onConnectionChange: (ConnectionStatus) 
     LaunchedEffect(state.conversation.connection) { onConnectionChange(state.conversation.connection) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(viewModel, lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.connect() } }
-    ChatScreen(state, viewModel::editDraft, viewModel::send, viewModel::toggleThinking)
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> viewModel.addFiles(uris.map { it.toString() }) }
+    var exportFile by remember { mutableStateOf<Attachment?>(null) }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        exportFile?.let { file -> if (uri != null) viewModel.download(file, uri.toString()) }
+        exportFile = null
+    }
+    ChatScreen(state, viewModel::editDraft, viewModel::send, viewModel::toggleThinking,
+        onAttach = { picker.launch(arrayOf("*/*")) }, onRemoveFile = viewModel::removeFile,
+        onDownload = { file -> exportFile = file; exporter.launch(file.name) })
 }
 
 @Composable
-fun ChatScreen(state: ChatUiState, onDraftChange: (String) -> Unit = {}, onSend: () -> Unit = {}, onToggleThinking: (String) -> Unit = {}) {
+fun ChatScreen(state: ChatUiState, onDraftChange: (String) -> Unit = {}, onSend: () -> Unit = {}, onToggleThinking: (String) -> Unit = {}, onAttach: () -> Unit = {}, onRemoveFile: (String) -> Unit = {}, onDownload: (Attachment) -> Unit = {}) {
     val list = rememberLazyListState()
     val messages = state.conversation.projection.messages
     LaunchedEffect(messages) {
@@ -52,7 +64,8 @@ fun ChatScreen(state: ChatUiState, onDraftChange: (String) -> Unit = {}, onSend:
                     if (message.role == MessageRole.User) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         BoxWithConstraints {
                             Column(Modifier.widthIn(max = maxWidth * .85f).background(Slate3, RoundedCornerShape(12.dp)).padding(12.dp)) {
-                                Text(message.text, style = MaterialTheme.typography.bodyMedium)
+                                if (message.text.isNotEmpty()) Text(message.text, style = MaterialTheme.typography.bodyMedium)
+                                message.attachments.forEach { file -> AttachmentRow(file) { onDownload(file) } }
                                 if (message.sending) Text("Sending…", style = MaterialTheme.typography.bodySmall)
                             }
                         }
@@ -85,11 +98,45 @@ fun ChatScreen(state: ChatUiState, onDraftChange: (String) -> Unit = {}, onSend:
                     }
                 }
             }
+            state.attachments.notice?.let { Text(it, color = Slate11, style = MaterialTheme.typography.bodySmall) }
+            state.attachments.files.forEach { row ->
+                Row(Modifier.fillMaxWidth().background(Slate3, RoundedCornerShape(8.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        row.file?.let { AttachmentRow(it) }
+                        if (row.uploading) { Text("Uploading file…"); LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                        row.error?.let { Text(it, color = Red11, style = MaterialTheme.typography.bodySmall) }
+                    }
+                    TextButton(onClick = { onRemoveFile(row.key) }, enabled = !state.conversation.sending) { Text("Remove") }
+                }
+            }
+            if (state.attachments.capabilities.enabled) {
+                TextButton(onClick = onAttach, enabled = !state.conversation.sending && state.attachments.files.size < state.attachments.capabilities.maxFilesPerMessage && state.attachments.capabilities.pickerTypes.isNotEmpty()) { Text("Attach file") }
+                Text("Up to 4 files: images up to 5 MiB; text up to 64 KiB. PDF, audio and video are not supported." + if (!state.attachments.capabilities.supportsImages) " Images unavailable for this model." else "", color = Slate11, style = MaterialTheme.typography.bodySmall)
+            }
             Row(Modifier.widthIn(max = 768.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
                 LaliInput(state.draft, onDraftChange, Modifier.weight(1f), placeholder = "Message Saul")
                 LaliPrimaryButton(onSend, enabled = state.canSend, text = "Send")
             }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentRow(file: Attachment, onDownload: (() -> Unit)? = null) {
+    val size = when {
+        file.size < 1024 -> "${file.size} B"
+        file.size < 1024 * 1024 -> String.format(Locale.ROOT, "%.1f KiB", file.size / 1024.0)
+        else -> String.format(Locale.ROOT, "%.1f MiB", file.size / (1024.0 * 1024))
+    }
+    Row(Modifier.padding(vertical = 4.dp).background(Slate3, RoundedCornerShape(8.dp))
+        .border(1.dp, Slate6, RoundedCornerShape(8.dp))
+        .then(if (onDownload != null) Modifier.clickable(onClickLabel = "Download ${file.name}", onClick = onDownload) else Modifier)
+        .padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (onDownload != null) Text("↓", color = Slate10)
+        Column(Modifier.weight(1f)) {
+            Text(file.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(size, color = Slate10, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -17,13 +17,19 @@ export function setupAiModel() {
   const apiKeyAuth = provider.auth.apiKey
   if (!apiKeyAuth) throw new Error('Azure OpenAI authentication is unavailable')
   const existing = models.getModel(providerName, modelId)
+  const configuredInput = getSecret('AZURE_OPENAI_INPUT')
   const model: Model<'azure-openai-responses'> = {
     id: modelId,
     name: existing?.name ?? 'Azure Custom Model',
     api: 'azure-openai-responses',
     provider: providerName,
     baseUrl: baseUrl || existing?.baseUrl || '',
-    input: existing?.input ?? ['text'],
+    input:
+      configuredInput === 'text,image'
+        ? ['text', 'image']
+        : configuredInput === 'text'
+          ? ['text']
+          : (existing?.input ?? ['text']),
     cost: existing?.cost ?? {
       input: 0,
       output: 0,
@@ -59,5 +65,6 @@ export function setupAiModel() {
   })
   markSettingActive('AZURE_OPENAI_MODEL', modelId)
   markSettingActive('AZURE_OPENAI_BASE_URL', baseUrl)
+  markSettingActive('AZURE_OPENAI_INPUT', configuredInput)
   return { models, providerName, modelId }
 }

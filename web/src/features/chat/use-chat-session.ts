@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { fetchWithCsrf } from '../../lib/api'
-import { type ChatView, projectChatView } from './chat-view'
+import { type Attachment, fetchWithCsrf, responseError } from '../../lib/api'
+import {
+  type ChatView,
+  projectChatView,
+  reconcilePendingMessages,
+} from './chat-view'
 
 export type Message = {
   role: 'user' | 'assistant'
   content: string
+  attachments?: Attachment[]
   thinkingContent?: string
   requestId: string
   idempotencyKey?: string
@@ -48,23 +53,25 @@ export function useChatSession(sessionId: string) {
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>('connecting')
   const pendingMessagesRef = useRef<Map<string, Message>>(new Map())
+  const seenEntriesRef = useRef<Set<string>>(new Set())
+  const initializedRef = useRef(false)
 
   useEffect(() => {
     setConnectionStatus('connecting')
     setMessages([])
     pendingMessagesRef.current.clear()
+    seenEntriesRef.current.clear()
+    initializedRef.current = false
 
     const processView = (view: ChatView) => {
       const projection = projectChatView(view)
 
-      for (const message of projection.messages) {
-        if (message.role !== 'user') continue
-        for (const [key, pending] of pendingMessagesRef.current.entries()) {
-          if (pending.content === message.content) {
-            pendingMessagesRef.current.delete(key)
-          }
-        }
-      }
+      reconcilePendingMessages(
+        projection.messages,
+        pendingMessagesRef.current,
+        seenEntriesRef.current
+      )
+      initializedRef.current = true
 
       setActiveRunId(projection.activeRunId)
       if (
@@ -101,14 +108,15 @@ export function useChatSession(sessionId: string) {
 
   const submitMessage = async (
     text: string,
-    attachmentIds: string[] = [],
-    whenBusy?: 'queue' | 'steer' | 'reject'
+    attachments: Attachment[] = [],
+    whenBusy?: 'followUp' | 'steer' | 'reject'
   ) => {
     if (
       (activeRunId && whenBusy !== 'steer') ||
-      (!text.trim() && attachmentIds.length === 0)
+      !initializedRef.current ||
+      (!text.trim() && attachments.length === 0)
     ) {
-      return
+      return false
     }
 
     const idempotencyKey =
@@ -118,6 +126,7 @@ export function useChatSession(sessionId: string) {
     const pendingMessage: Message = {
       role: 'user',
       content: text,
+      attachments,
       requestId: idempotencyKey,
       idempotencyKey,
       status: 'sending',
@@ -133,21 +142,24 @@ export function useChatSession(sessionId: string) {
         body: JSON.stringify({
           conversationId: sessionId === 'main' ? undefined : sessionId,
           message: text,
-          attachmentIds,
+          attachmentIds: attachments.map(file => file.id),
           whenBusy,
         }),
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to send message: ${response.status}`)
+        throw new Error(await responseError(response))
       }
+      return true
     } catch (error) {
+      // A canonical stream entry confirms delivery even if the HTTP reply is lost.
+      if (!pendingMessagesRef.current.has(idempotencyKey)) return true
       console.error('Failed to send message', error)
-      if (error instanceof Error && error.message.includes('404')) {
-        toast.error('Conversation not found. It may have been deleted.')
-      } else {
-        toast.error('Failed to send message. Please try again.')
-      }
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to send message. Please try again.'
+      )
 
       const pending = pendingMessagesRef.current.get(idempotencyKey)
       if (pending) {
@@ -159,6 +171,7 @@ export function useChatSession(sessionId: string) {
           )
         )
       }
+      return false
     }
   }
 

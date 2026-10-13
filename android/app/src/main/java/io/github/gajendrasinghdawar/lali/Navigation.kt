@@ -51,7 +51,7 @@ fun MainNavigation(container: AppContainer) {
                         ConversationListScreen(state, { stack.add(Chat(it)) }, vm::create, vm::refresh, vm::rename, vm::delete)
                     }
                     entry<Chat> { destination ->
-                        ChatScreen(viewModel { ChatViewModel(destination.id, GatewayChatRepository(container.api)) }, onConnectionChange = { connection = it })
+                        ChatScreen(viewModel { ChatViewModel(destination.id, GatewayChatRepository(container.api), container.artifactRepository) }, onConnectionChange = { connection = it })
                     }
                     entry<Tasks> { TasksScreen(viewModel { TasksViewModel(container.taskRepository) }) }
                     entry<Settings> {

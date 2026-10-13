@@ -11,6 +11,7 @@ import { SubagentExtension } from '../agent/subagents/tool.ts'
 import { LaliExtension } from '../agent/tools.ts'
 import { db } from '../db/index.ts'
 import { userConversations } from '../db/schema.ts'
+import { type Attachment, attachmentContent } from './attachments.ts'
 
 export class ChatService {
   harness: Harness
@@ -72,13 +73,21 @@ export class ChatService {
   async submitMessage(
     conversationId: ConversationId,
     message: string,
-    whenBusy: 'followUp' | 'reject' | 'steer' | undefined
+    whenBusy: 'followUp' | 'reject' | 'steer' | undefined,
+    attachments: Attachment[] = []
   ) {
     const conv = await this.harness.conversation(
       conversationId,
       BACKGROUND_CONTEXT
     )
     if (!conv) return null
+
+    if (attachments.length > 0) {
+      await conv.configure(
+        { extensions: { add: [{ name: 'attachments' }] } },
+        BACKGROUND_CONTEXT
+      )
+    }
 
     // Opportunistic Title Generation in a Pi-Durable Background Task
     const records = await db
@@ -93,7 +102,9 @@ export class ChatService {
         .commit(async () => {
           // Simple heuristic for title (can be upgraded to LLM call later)
           const newTitle =
-            message.length > 30 ? `${message.substring(0, 30)}...` : message
+            message.length > 30
+              ? `${message.substring(0, 30)}...`
+              : message || attachments[0]?.name || 'Chat'
           await db
             .update(userConversations)
             .set({ title: newTitle })
@@ -103,7 +114,11 @@ export class ChatService {
     }
 
     const submission = await conv.submit(
-      { type: 'input', content: message, whenBusy },
+      {
+        type: 'input',
+        content: attachmentContent(message, attachments),
+        whenBusy,
+      },
       BACKGROUND_CONTEXT
     )
     return await submission.wait(BACKGROUND_CONTEXT)

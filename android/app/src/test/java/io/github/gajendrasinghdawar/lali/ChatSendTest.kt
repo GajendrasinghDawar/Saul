@@ -68,7 +68,7 @@ class ChatSendTest {
             val fake = object : ChatRepository {
                 override val state = MutableStateFlow(ConversationState(connection = ConnectionStatus.Online))
                 override suspend fun connect(id: String) = Unit
-                override suspend fun send(id: String, message: String): Boolean { sends++; return false }
+                override suspend fun send(id: String, message: String, attachments: List<Attachment>): Boolean { sends++; return false }
             }
             val vm = ChatViewModel("7", fake)
             val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect() }

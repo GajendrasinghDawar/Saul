@@ -1,3 +1,4 @@
+import type { Models } from '@earendil-works/pi-ai'
 import type { Harness } from '@earendil-works/pi-durable'
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node'
 import express, { type ErrorRequestHandler } from 'express'
@@ -9,14 +10,18 @@ import {
   generateCsrfToken,
   securityMiddleware,
 } from './middleware/security.ts'
+import { createArtifactsRouter } from './routes/artifacts.ts'
 import { createChatRouter } from './routes/chat.ts'
 import { createConversationsRouter } from './routes/conversations.ts'
 import { createSecretsRouter } from './routes/secrets.ts'
 import { createTasksRouter } from './routes/tasks.ts'
+import type { AttachmentStore } from './services/attachments.ts'
 
 export type AppDependencies = {
   harness: Harness
   auth: typeof betterAuthInstance
+  attachments: AttachmentStore
+  models: Models
   modelConfig: {
     providerName: string
     modelId: string
@@ -92,6 +97,18 @@ export function createApp(dependencies: AppDependencies) {
   app.use('/api', createAuthGuard(auth))
 
   // Mount Feature Routes
+  const model = dependencies.models.getModel(
+    dependencies.modelConfig.providerName,
+    dependencies.modelConfig.modelId
+  )
+  app.use(
+    '/api/artifacts',
+    createArtifactsRouter(
+      dependencies.attachments,
+      Boolean(model?.input.includes('image')),
+      doubleCsrfProtection
+    )
+  )
   app.use(
     '/api',
     createChatRouter(dependencies, doubleCsrfProtection, apiLimiter)

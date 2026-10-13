@@ -20,7 +20,15 @@ const supportedNames = new Set([
   'MY_EMAIL_ADDRESS',
   'AZURE_OPENAI_BASE_URL',
   'AZURE_OPENAI_MODEL',
+  'AZURE_OPENAI_INPUT',
+  'S3_ENDPOINT',
+  'S3_REGION',
+  'S3_BUCKET',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
 ])
+
+const protectedNames = new Set(['S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'])
 
 function SettingsPage() {
   const [settings, setSettings] = useState<Setting[]>([])
@@ -82,7 +90,9 @@ function SettingsPage() {
           .map(s => ({
             ...s,
             value:
-              s.kind === 'secret' || s.name.endsWith('_API_KEY')
+              s.kind === 'secret' ||
+              s.name.endsWith('_API_KEY') ||
+              protectedNames.has(s.name)
                 ? null
                 : s.value,
           }))
@@ -219,7 +229,9 @@ function SettingsPage() {
           {!denied &&
             settings.map(setting => {
               const protectedKey =
-                setting.kind === 'secret' || setting.name.endsWith('_API_KEY')
+                setting.kind === 'secret' ||
+                setting.name.endsWith('_API_KEY') ||
+                protectedNames.has(setting.name)
               return (
                 <section
                   key={setting.name}
@@ -305,6 +317,16 @@ function SettingsPage() {
                       </label>
                       <input
                         id={`value-${setting.name}`}
+                        placeholder={
+                          setting.name === 'AZURE_OPENAI_INPUT'
+                            ? 'text or text,image'
+                            : undefined
+                        }
+                        pattern={
+                          setting.name === 'AZURE_OPENAI_INPUT'
+                            ? 'text(,image)?'
+                            : undefined
+                        }
                         required
                         disabled={busy}
                         type={protectedKey ? 'password' : 'text'}

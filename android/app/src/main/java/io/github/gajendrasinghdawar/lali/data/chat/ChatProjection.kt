@@ -7,7 +7,7 @@ import kotlinx.serialization.json.*
 enum class MessageRole { User, Assistant }
 enum class ToolStatus { Pending, Running, Done, Failed, Unknown }
 data class ToolActivity(val id: String, val name: String, val parameters: String = "", val status: ToolStatus = ToolStatus.Unknown)
-data class ChatMessage(val id: String, val role: MessageRole, val text: String, val thinking: String = "", val complete: Boolean = true, val sending: Boolean = false, val tools: List<ToolActivity> = emptyList())
+data class ChatMessage(val id: String, val role: MessageRole, val text: String, val thinking: String = "", val complete: Boolean = true, val sending: Boolean = false, val tools: List<ToolActivity> = emptyList(), val attachments: List<Attachment> = emptyList())
 data class ChatProjection(val messages: List<ChatMessage> = emptyList(), val busy: Boolean = false)
 
 @Serializable internal data class SnapshotEvent(val type: String, val view: SnapshotView)
@@ -49,7 +49,21 @@ fun parseSnapshot(data: String): ChatProjection {
     event.view.entries.forEach { entry ->
         when (entry.kind) {
             "pi.user" -> {
-                messages.add(ChatMessage(entry.id.content, MessageRole.User, entry.model.joinToString("") { textContent(it.content) }))
+                val files = mutableListOf<Attachment>()
+                val text = entry.model.joinToString("") { model ->
+                    val content = model.content
+                    if (content is JsonArray) content.joinToString("") { part ->
+                        val value = part as? JsonObject
+                        val text = if ((value?.get("type") as? JsonPrimitive)?.content == "text") (value["text"] as? JsonPrimitive)?.content.orEmpty() else ""
+                        if (text.startsWith("saul:text:")) text.removePrefix("saul:text:")
+                        else if (text.startsWith("saul:attachment:")) {
+                            val file = runCatching { snapshotJson.decodeFromString<Attachment>(text.removePrefix("saul:attachment:")) }.getOrNull()
+                            if (file != null && file.size >= 0) files.add(file)
+                            ""
+                        } else text
+                    } else textContent(content)
+                }
+                messages.add(ChatMessage(entry.id.content, MessageRole.User, text, attachments = files))
                 assistantIndex = null
             }
             "pi.assistant" -> {

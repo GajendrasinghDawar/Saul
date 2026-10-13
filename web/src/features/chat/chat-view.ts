@@ -1,3 +1,4 @@
+import type { Attachment } from '../../lib/api'
 import type { Message } from './use-chat-session'
 
 type ContentPart = {
@@ -32,6 +33,78 @@ export type ChatProjection = {
   messages: Message[]
   activeRunId: string | null
   isBusy: boolean
+}
+
+export function reconcilePendingMessages(
+  canonical: Message[],
+  pending: Map<string, Message>,
+  seen: Set<string>
+) {
+  for (const message of canonical) {
+    if (message.role !== 'user' || seen.has(message.requestId)) continue
+    seen.add(message.requestId)
+    for (const [key, candidate] of [...pending].sort(
+      (a, b) =>
+        Number(a[1].status === 'failed') - Number(b[1].status === 'failed')
+    )) {
+      const ids = (message.attachments ?? []).map(file => file.id).sort()
+      const pendingIds = (candidate.attachments ?? [])
+        .map(file => file.id)
+        .sort()
+      if (
+        message.content === candidate.content &&
+        JSON.stringify(ids) === JSON.stringify(pendingIds)
+      ) {
+        pending.delete(key)
+        break
+      }
+    }
+  }
+}
+
+function parseUserContent(content: ModelMessage['content']) {
+  const attachments: Attachment[] = []
+  if (typeof content === 'string') return { text: content, attachments }
+  let text = ''
+  for (const part of content ?? []) {
+    if (part.type !== 'text') continue
+    const value = part.text ?? ''
+    if (value.startsWith('saul:text:')) {
+      text += value.slice('saul:text:'.length)
+      continue
+    }
+    if (!value.startsWith('saul:attachment:')) {
+      text += value
+      continue
+    }
+    try {
+      const file: unknown = JSON.parse(value.slice('saul:attachment:'.length))
+      if (
+        typeof file === 'object' &&
+        file !== null &&
+        'id' in file &&
+        typeof file.id === 'string' &&
+        'name' in file &&
+        typeof file.name === 'string' &&
+        'mimeType' in file &&
+        typeof file.mimeType === 'string' &&
+        'size' in file &&
+        typeof file.size === 'number' &&
+        Number.isFinite(file.size) &&
+        file.size >= 0
+      ) {
+        attachments.push({
+          id: file.id,
+          name: file.name,
+          mimeType: file.mimeType,
+          size: file.size,
+        })
+      }
+    } catch {
+      /* Never expose internal attachment markers in the transcript. */
+    }
+  }
+  return { text, attachments }
 }
 
 function createAssistant(requestId: string): Message {
@@ -73,17 +146,11 @@ export function projectChatView(view: ChatView): ChatProjection {
     const model = entry.model?.[0]
     if (entry.kind === 'pi.user') {
       if (currentAssistant) currentAssistant.isComplete = true
-      const content = model?.content
-      const text =
-        typeof content === 'string'
-          ? content
-          : (content ?? [])
-              .filter(part => part.type === 'text')
-              .map(part => part.text ?? '')
-              .join('')
+      const { text, attachments } = parseUserContent(model?.content)
       messages.push({
         role: 'user',
         content: text,
+        attachments,
         requestId: String(entry.id),
         status: 'delivered',
       })

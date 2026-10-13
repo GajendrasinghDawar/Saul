@@ -1,8 +1,9 @@
 # Server-managed service settings
 
-Only administrators can use `/api/secrets`. The five supported settings are
+Only administrators can use `/api/secrets`. Supported settings include
 `AZURE_OPENAI_API_KEY`, `RESEND_API_KEY`, `MY_EMAIL_ADDRESS`,
-`AZURE_OPENAI_BASE_URL`, and `AZURE_OPENAI_MODEL`. All stored overrides use
+`AZURE_OPENAI_BASE_URL`, `AZURE_OPENAI_MODEL`, `AZURE_OPENAI_INPUT`, and the five
+S3 settings described in [the attachment guide](attachments.md). All stored overrides use
 AES-256-GCM with a random nonce and authentication bound to the setting name.
 Decrypted values stay in server memory; provider keys are not copied to
 `process.env`. This does not protect against a compromised running server.
@@ -18,7 +19,7 @@ the key, including development writes and non-secret settings.
 
 Keep database location/access, server port, deployment mode, authentication URL,
 `BETTER_AUTH_SECRET`, `COOKIE_SECRET`, and `CSRF_SECRET` outside the UI.
-Only the five supported service settings are loaded from the database.
+Only supported service settings are loaded from the database.
 Bootstrap values must come from external configuration, not database rows.
 No users are promoted by this settings feature.
 The first account created on an empty installation becomes the administrator.
@@ -37,7 +38,7 @@ an override reveals the fallback, rather than disabling the service.
 ## API
 
 * `GET /api/secrets`: array of `{name,kind,value,isSet,applyMode,pendingRestart}`.
-  Always lists all five definitions. Secret values are always `null`.
+  Always lists all supported definitions. Secret values are always `null`.
   `isSet` reflects the effective override or environment fallback. Responses are
   `Cache-Control: no-store`.
 * `POST /api/secrets`: JSON `{name,value}`. Kind is determined by the server.
@@ -62,7 +63,10 @@ Keys and mail recipient apply to new requests immediately. Already-running
 requests can finish with previous values. Model and base URL changes need a
 process restart: `pendingRestart` compares the effective value to the snapshot
 actually used by the running model configuration, including after deletion.
-The default model remains `gpt-6-luna`. No restart endpoint is provided.
+The default model remains `gpt-6-luna`. Model input capabilities and all S3
+settings also need a restart. S3 access key IDs and secret keys are never
+returned by the API. The default S3 region is `us-east-1`; unset storage leaves
+text chat usable. No restart endpoint is provided.
 This cache is single-process: restart other server instances after mutations.
 
 ## Development setup

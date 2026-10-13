@@ -35,7 +35,7 @@ class ChatActivityTest {
             val repository = object : ChatRepository {
                 override val state = MutableStateFlow(ConversationState(ChatProjection(listOf(first, second))))
                 override suspend fun connect(id: String) = Unit
-                override suspend fun send(id: String, message: String) = false
+                override suspend fun send(id: String, message: String, attachments: List<Attachment>) = false
             }
             val vm = ChatViewModel("7", repository)
             val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect() }

@@ -23,7 +23,7 @@ data class ConversationState(
 interface ChatRepository {
     val state: StateFlow<ConversationState>
     suspend fun connect(id: String)
-    suspend fun send(id: String, message: String): Boolean
+    suspend fun send(id: String, message: String, attachments: List<Attachment> = emptyList()): Boolean
 }
 
 /** One instance per chat destination; snapshots replace history, never append it. */
@@ -38,7 +38,7 @@ class GatewayChatRepository(private val api: GatewayApi) : ChatRepository {
     internal fun acceptSnapshot(data: String) {
         canonical = parseSnapshot(data)
         pending?.let { optimistic ->
-            if (canonical.messages.any { it.role == MessageRole.User && it.id !in optimistic.knownIds && it.text == optimistic.message.text }) pending = null
+            if (canonical.messages.any { it.role == MessageRole.User && it.id !in optimistic.knownIds && it.text == optimistic.message.text && it.attachments.map { file -> file.id } == optimistic.message.attachments.map { file -> file.id } }) pending = null
         }
         publish()
         mutableState.update { it.copy(connection = ConnectionStatus.Online, error = null) }
@@ -52,15 +52,16 @@ class GatewayChatRepository(private val api: GatewayApi) : ChatRepository {
         ) }
     }
 
-    override suspend fun send(id: String, message: String): Boolean {
-        if (message.isBlank() || state.value.sending || canonical.busy || state.value.connection != ConnectionStatus.Online) return false
+    override suspend fun send(id: String, message: String, attachments: List<Attachment>): Boolean {
+        if ((message.isBlank() && attachments.isEmpty()) || attachments.size > 4 || state.value.sending || canonical.busy || state.value.connection != ConnectionStatus.Online) return false
         val text = message.trim()
-        pending = Pending(ChatMessage("pending-${UUID.randomUUID()}", MessageRole.User, text, sending = true), canonical.messages.map { it.id }.toSet())
+        pending = Pending(ChatMessage("pending-${UUID.randomUUID()}", MessageRole.User, text, sending = true, attachments = attachments), canonical.messages.map { it.id }.toSet())
         dispatching = true
         publish()
         try {
             api.request(HttpMethod.Post, "/api/chat", buildJsonObject {
                 put("conversationId", id); put("message", text); put("whenBusy", "reject")
+                put("attachmentIds", JsonArray(attachments.map { JsonPrimitive(it.id) }))
             })
             return true
         } catch (e: CancellationException) { throw e }

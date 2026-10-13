@@ -8,10 +8,12 @@ import {
 } from 'react'
 import { Button } from '../../components/ui/Button'
 import { Textarea } from '../../components/ui/Textarea'
+import type { ArtifactCapabilities, Attachment } from '../../lib/api'
 
 export type StagedFile = {
+  id: string
   file: File
-  id?: string
+  attachment?: Attachment
   error?: string
   uploading: boolean
 }
@@ -20,6 +22,9 @@ type ComposerProps = {
   draft: string
   setDraft: (value: string) => void
   stagedFiles: StagedFile[]
+  sending: boolean
+  capabilities: ArtifactCapabilities | null
+  attachmentNotice: string
   fileInputRef: React.RefObject<HTMLInputElement | null>
   onFiles: (event: ChangeEvent<HTMLInputElement>) => void
   onRemoveFile: (file: File) => void
@@ -34,6 +39,9 @@ export function Composer({
   draft,
   setDraft,
   stagedFiles,
+  sending,
+  capabilities,
+  attachmentNotice,
   fileInputRef,
   onFiles,
   onRemoveFile,
@@ -47,7 +55,9 @@ export function Composer({
   const uploading = stagedFiles.some(file => file.uploading)
   const hasUploadError = stagedFiles.some(file => file.error)
   const canSend =
-    (draft.trim().length > 0 || stagedFiles.some(file => file.id)) &&
+    (draft.trim().length > 0 || stagedFiles.some(file => file.attachment)) &&
+    !sending &&
+    connectionStatus === 'connected' &&
     !uploading &&
     !hasUploadError
   useEffect(() => {
@@ -83,8 +93,8 @@ export function Composer({
             <div className='relative z-10 flex flex-wrap gap-2 px-4 pt-4'>
               {stagedFiles.map(file => (
                 <div
-                  key={`${file.file.name}-${file.file.lastModified}`}
-                  className={`flex max-w-52 items-center gap-2 rounded-md border bg-slate4 px-2 py-1 text-xs ${file.error ? 'border-red8 text-red11' : 'border-slate6 text-slate11'}`}
+                  key={file.id}
+                  className={`flex max-w-full items-center gap-2 rounded-md border bg-slate4 px-2 py-1 text-xs ${file.error ? 'border-red8 text-red11' : 'border-slate6 text-slate11'}`}
                 >
                   <span className='truncate'>{file.file.name}</span>
                   <span>
@@ -92,6 +102,7 @@ export function Composer({
                   </span>
                   <button
                     type='button'
+                    disabled={sending}
                     onClick={() => onRemoveFile(file.file)}
                     aria-label={`Remove ${file.file.name}`}
                   >
@@ -101,10 +112,21 @@ export function Composer({
               ))}
             </div>
           )}
+          {(attachmentNotice ||
+            (capabilities?.enabled && !capabilities.supportsImages)) && (
+            <p
+              role='status'
+              className='relative z-10 px-4 pt-3 text-xs text-slate11'
+            >
+              {attachmentNotice ||
+                'Images are disabled for this model. For a custom image-capable deployment, set AZURE_OPENAI_INPUT to text,image and restart.'}
+            </p>
+          )}
           <div className='relative z-10 px-4 pb-2 pt-4'>
             <Textarea
               ref={textareaRef}
               value={draft}
+              disabled={sending}
               onChange={event => setDraft(event.target.value)}
               onKeyDown={handleKeyDown}
               placeholder='Message Saul...'
@@ -136,6 +158,16 @@ export function Composer({
                 variant='ghost'
                 onClick={() => fileInputRef.current?.click()}
                 aria-label='Attach file'
+                disabled={
+                  sending ||
+                  !capabilities?.enabled ||
+                  stagedFiles.length >=
+                    Math.min(4, capabilities.maxFilesPerMessage)
+                }
+                title={
+                  attachmentNotice ||
+                  'Up to 4 files: images up to 5 MiB; text up to 64 KiB'
+                }
               >
                 <Paperclip size={15} />
               </Button>
@@ -144,6 +176,12 @@ export function Composer({
                 className='hidden'
                 type='file'
                 multiple
+                accept={capabilities?.supportedMimeTypes
+                  .filter(
+                    mime =>
+                      capabilities.supportsImages || !mime.startsWith('image/')
+                  )
+                  .join(',')}
                 onChange={onFiles}
               />
               {activeRunId && !draft.trim().length && !stagedFiles.length ? (

@@ -5,8 +5,15 @@ import type { auth as betterAuthInstance } from '../auth/auth.ts'
 export function createAuthGuard(auth: typeof betterAuthInstance) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const headers = fromNodeHeaders(req.headers)
+      const authorization = headers.get('authorization')
+      if (authorization !== null) {
+        if (!/^Bearer \S+$/i.test(authorization))
+          return res.status(401).json({ error: 'Authentication required' })
+        headers.delete('cookie')
+      }
       const session = await auth.api.getSession({
-        headers: fromNodeHeaders(req.headers),
+        headers,
       })
 
       if (!session) {

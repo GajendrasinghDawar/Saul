@@ -44,7 +44,13 @@ export function MessageTimeline({
                 <UserMessage
                   key={`user-${message.requestId}`}
                   content={message.content}
-                  onFork={() => onFork?.(message.requestId)}
+                  attachments={message.attachments}
+                  status={message.status}
+                  onFork={
+                    message.status === 'delivered'
+                      ? () => onFork?.(message.requestId)
+                      : undefined
+                  }
                 />
               ) : (
                 <AssistantMessage
