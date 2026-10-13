@@ -31,14 +31,25 @@ class GatewayChatRepository(private val api: GatewayApi) : ChatRepository {
     private val mutableState = MutableStateFlow(ConversationState())
     override val state = mutableState.asStateFlow()
     private var canonical = ChatProjection()
-    private data class Pending(val message: ChatMessage, val knownIds: Set<String>)
+    private data class Pending(val message: ChatMessage, val knownIds: Set<String>, val admittedId: String? = null)
     private var pending: Pending? = null
     private var dispatching = false
+    private data class Submission(val text: String, val attachmentIds: List<String>, val whenBusy: String = "reject")
+    private data class Retry(val submission: Submission, val requestId: String)
+    private val retries = mutableMapOf<String, Retry>()
 
     internal fun acceptSnapshot(data: String) {
         canonical = parseSnapshot(data)
         pending?.let { optimistic ->
-            if (canonical.messages.any { it.role == MessageRole.User && it.id !in optimistic.knownIds && it.text == optimistic.message.text && it.attachments.map { file -> file.id } == optimistic.message.attachments.map { file -> file.id } }) pending = null
+            val received = canonical.messages.any { message ->
+                message.role == MessageRole.User && if (optimistic.admittedId != null) {
+                    message.id == optimistic.admittedId
+                } else {
+                    message.id !in optimistic.knownIds && message.text == optimistic.message.text &&
+                        message.attachments.map { it.id } == optimistic.message.attachments.map { it.id }
+                }
+            }
+            if (received) pending = null
         }
         publish()
         mutableState.update { it.copy(connection = ConnectionStatus.Online, error = null) }
@@ -55,19 +66,29 @@ class GatewayChatRepository(private val api: GatewayApi) : ChatRepository {
     override suspend fun send(id: String, message: String, attachments: List<Attachment>): Boolean {
         if ((message.isBlank() && attachments.isEmpty()) || attachments.size > 4 || state.value.sending || canonical.busy || state.value.connection != ConnectionStatus.Online) return false
         val text = message.trim()
+        val submission = Submission(text, attachments.map { it.id })
+        val retry = retries[id]?.takeIf { it.submission == submission }
+            ?: Retry(submission, UUID.randomUUID().toString())
+        retries[id] = retry
         pending = Pending(ChatMessage("pending-${UUID.randomUUID()}", MessageRole.User, text, sending = true, attachments = attachments), canonical.messages.map { it.id }.toSet())
         dispatching = true
         publish()
         try {
-            api.request(HttpMethod.Post, "/api/chat", buildJsonObject {
-                put("conversationId", id); put("message", text); put("whenBusy", "reject")
+            val response = api.request(HttpMethod.Post, "/api/chat", buildJsonObject {
+                put("conversationId", id); put("message", text); put("whenBusy", submission.whenBusy)
+                put("requestId", retry.requestId)
                 put("attachmentIds", JsonArray(attachments.map { JsonPrimitive(it.id) }))
             })
+            val admittedId = (response["result"] as? JsonObject)?.get("entry")?.jsonPrimitive?.content
+            pending = pending?.takeUnless {
+                admittedId == null || canonical.messages.any { message -> message.id == admittedId }
+            }?.let { it.copy(admittedId = admittedId, message = it.message.copy(sending = false)) }
+            retries.remove(id)
             return true
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) {
-            // A snapshot confirming receipt wins over an HTTP timeout or lost response.
-            if (pending == null) return true
+            // Matching text can come from another device. Keep the retry identity
+            // until HTTP confirms this exact submission, not merely a snapshot.
             pending = null
             mutableState.update { it.copy(error = "Could not confirm delivery. Check the transcript before retrying.") }
             return false

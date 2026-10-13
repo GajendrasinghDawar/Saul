@@ -1,12 +1,17 @@
 import { Check, ChevronDown, ShieldAlert, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '../../components/ui/Collapsible'
-import { approveEffect, rejectEffect } from '../../lib/api'
+import {
+  type Approval,
+  approveEffect,
+  getApproval,
+  rejectEffect,
+} from '../../lib/api'
 import { cn } from '../../lib/cn'
 import type { Effect } from '../chat/use-chat-session'
 
@@ -35,19 +40,58 @@ export function EffectCard({
 }) {
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
-  const status = effect.status ?? 'pending'
+  const [approval, setApproval] = useState<Approval | null>(null)
+  const [error, setError] = useState('')
+  const generation = useRef(0)
+  useEffect(() => {
+    const version = ++generation.current
+    setApproval(null)
+    setLoading(false)
+    setError('')
+    void getApproval(effect.id)
+      .then(value => {
+        if (generation.current === version) setApproval(value)
+      })
+      .catch(() => {
+        if (generation.current === version)
+          setError('Approval state is unavailable.')
+      })
+    return () => {
+      generation.current++
+    }
+  }, [effect.id])
+  const status = approval?.id === effect.id ? approval.status : 'unknown'
   const run = async (action: 'approve' | 'reject') => {
+    if (loading || status !== 'pending') return
+    const version = generation.current
     setLoading(true)
+    setError('')
     try {
       if (action === 'approve') {
-        await approveEffect(effect.id, effect.digest ?? '')
+        await approveEffect(effect.id)
         onApprove?.()
       } else {
         await rejectEffect(effect.id)
         onReject?.()
       }
+    } catch (cause) {
+      if (generation.current === version)
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : 'Decision could not be confirmed.'
+        )
     } finally {
-      setLoading(false)
+      try {
+        const value = await getApproval(effect.id)
+        if (generation.current === version) setApproval(value)
+      } catch {
+        if (generation.current === version) {
+          setApproval(null)
+          setError('Approval state is unavailable.')
+        }
+      }
+      if (generation.current === version) setLoading(false)
     }
   }
   return (
@@ -60,15 +104,25 @@ export function EffectCard({
         <span
           className={cn(
             'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-            statusStyles[status]
+            status === 'consumed' ? statusStyles.approved : statusStyles[status]
           )}
         >
           {status}
         </span>
       </div>
       <div className='mt-2 text-sm text-slate11'>
-        {effect.summary || 'Review this requested action.'}
+        {approval?.action || effect.summary || 'Review this requested action.'}
       </div>
+      {error && (
+        <p role='status' className='mt-2 text-xs text-red11'>
+          {error}
+        </p>
+      )}
+      {approval && (
+        <p className='mt-2 text-xs text-slate10'>
+          Approval records your decision. Execution is managed separately.
+        </p>
+      )}
       {status === 'pending' && (
         <div className='mt-4 flex gap-2'>
           <Button
@@ -102,16 +156,10 @@ export function EffectCard({
         <CollapsibleContent className='mt-3 space-y-3 text-xs'>
           <div>
             <div className='mb-1 uppercase tracking-wide text-slate9'>
-              Payload
+              Requested action
             </div>
-            <pre className='overflow-auto rounded-md bg-slate1 p-3 text-slate11'>
-              {typeof effect.payload === 'string'
-                ? effect.payload
-                : JSON.stringify(
-                    effect.payload ?? effect.data ?? null,
-                    null,
-                    2
-                  )}
+            <pre className='whitespace-pre-wrap break-words rounded-md bg-slate1 p-3 text-slate11'>
+              {approval?.detail ?? 'Details are unavailable.'}
             </pre>
           </div>
           {effect.digest && (

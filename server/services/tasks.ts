@@ -25,6 +25,14 @@ export class TaskService {
     )
   }
 
+  async getApproval(id: string, userId: string) {
+    const [approval] = await db
+      .select()
+      .from(approvals)
+      .where(sql`${approvals.id} = ${id} AND ${approvals.userId} = ${userId}`)
+    return approval
+  }
+
   async setApprovalStatus(
     id: string,
     userId: string,
@@ -33,10 +41,13 @@ export class TaskService {
     const result = await db
       .update(approvals)
       .set({ status })
-      .where(sql`${approvals.id} = ${id} AND ${approvals.userId} = ${userId}`)
+      .where(
+        sql`${approvals.id} = ${id} AND ${approvals.userId} = ${userId} AND ${approvals.status} = 'pending'`
+      )
       .returning()
 
-    return result.length > 0
+    if (result.length > 0) return 'success'
+    return (await this.getApproval(id, userId)) ? 'conflict' : 'not_found'
   }
 
   async abortTask(

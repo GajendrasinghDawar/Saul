@@ -40,6 +40,14 @@ export function reconcilePendingMessages(
   pending: Map<string, Message>,
   seen: Set<string>
 ) {
+  for (const [key, candidate] of pending) {
+    if (
+      candidate.admittedEntryId &&
+      canonical.some(message => message.requestId === candidate.admittedEntryId)
+    ) {
+      pending.delete(key)
+    }
+  }
   for (const message of canonical) {
     if (message.role !== 'user' || seen.has(message.requestId)) continue
     seen.add(message.requestId)
@@ -52,6 +60,7 @@ export function reconcilePendingMessages(
         .map(file => file.id)
         .sort()
       if (
+        !candidate.admittedEntryId &&
         message.content === candidate.content &&
         JSON.stringify(ids) === JSON.stringify(pendingIds)
       ) {

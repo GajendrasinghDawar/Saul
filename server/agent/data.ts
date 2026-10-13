@@ -190,11 +190,62 @@ export async function saveTodo(id: string, userId: string, title: string) {
     .onConflictDoNothing()
 }
 
-export async function clearTodos(userId: string) {
-  await db
-    .update(schema.todos)
-    .set({ status: 'completed' })
-    .where(
-      sql`${schema.todos.status} = 'pending' AND ${schema.todos.userId} = ${userId}`
-    )
+export async function requestTodoClear(userId: string, conversationId: string) {
+  const action = `clear_todos:${conversationId}`
+  return db.transaction(async tx => {
+    const existing = await tx
+      .select()
+      .from(schema.approvals)
+      .where(
+        sql`${schema.approvals.userId} = ${userId} AND ${schema.approvals.action} = ${action} AND ${schema.approvals.status} IN ('pending', 'approved')`
+      )
+      .limit(1)
+    if (existing[0]) return existing[0]
+    const [proposal] = await tx
+      .insert(schema.approvals)
+      .values({
+        id: crypto.randomUUID(),
+        userId,
+        action,
+        detail:
+          'Clear all pending todos. New pending todos are included at execution time.',
+        status: 'pending',
+      })
+      .returning()
+    return proposal
+  })
+}
+
+export async function clearTodos(
+  userId: string,
+  conversationId: string,
+  proposalId: string
+) {
+  // Consume permission and apply the database effect together. A crash cannot
+  // leave reusable permission or complete a later batch on tool replay.
+  await db.transaction(async tx => {
+    const [proposal] = await tx
+      .select()
+      .from(schema.approvals)
+      .where(
+        sql`${schema.approvals.id} = ${proposalId} AND ${schema.approvals.userId} = ${userId} AND ${schema.approvals.action} = ${`clear_todos:${conversationId}`}`
+      )
+    if (proposal?.status === 'consumed') return
+    if (proposal?.status !== 'approved')
+      throw new Error('A new approval is required.')
+    const consumed = await tx
+      .update(schema.approvals)
+      .set({ status: 'consumed' })
+      .where(
+        sql`${schema.approvals.id} = ${proposalId} AND ${schema.approvals.status} = 'approved'`
+      )
+      .returning()
+    if (consumed.length === 0) throw new Error('A new approval is required.')
+    await tx
+      .update(schema.todos)
+      .set({ status: 'completed' })
+      .where(
+        sql`${schema.todos.status} = 'pending' AND ${schema.todos.userId} = ${userId}`
+      )
+  })
 }

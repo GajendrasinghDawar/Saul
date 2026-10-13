@@ -59,7 +59,7 @@ export function UserMessage({
         )}
       </MessageContent>
       {onFork && (
-        <MessageActions className='opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100'>
+        <MessageActions className='transition-opacity [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover/message:opacity-100 focus-within:opacity-100'>
           <MessageAction tooltip='Fork conversation from here' onClick={onFork}>
             <GitFork size={15} />
           </MessageAction>

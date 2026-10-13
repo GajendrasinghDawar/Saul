@@ -28,7 +28,7 @@ class ChatSendTest {
                 assertEquals("Bearer fixture", request.headers[HttpHeaders.Authorization])
                 received.complete(Unit)
                 reply.await()
-                respond("""{"success":true}""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                respond("""{"success":true,"result":{"entry":21}}""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
             })
             val repo = GatewayChatRepository(GatewayApi(http, "http://gateway", { "fixture" }, {}))
             repo.acceptSnapshot(snapshot())

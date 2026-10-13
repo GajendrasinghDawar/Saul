@@ -9,6 +9,8 @@ export function createTasksRouter(dependencies: AppDependencies) {
   // List all tasks belonging to the user
   router.get('/', controller.listTasks)
 
+  router.get('/approvals/:id', controller.getApproval)
+
   // Approve a pending action
   router.post('/approvals/:id/approve', controller.approveAction)
 

@@ -6,6 +6,7 @@ import {
   type Harness,
 } from '@earendil-works/pi-durable'
 import { eq } from 'drizzle-orm'
+import { isConversationOwner } from '../agent/data.ts'
 import { ReminderExtension } from '../agent/reminders.ts'
 import { SubagentExtension } from '../agent/subagents/tool.ts'
 import { LaliExtension } from '../agent/tools.ts'
@@ -74,7 +75,8 @@ export class ChatService {
     conversationId: ConversationId,
     message: string,
     whenBusy: 'followUp' | 'reject' | 'steer' | undefined,
-    attachments: Attachment[] = []
+    attachments: Attachment[] = [],
+    requestId?: string
   ) {
     const conv = await this.harness.conversation(
       conversationId,
@@ -118,6 +120,7 @@ export class ChatService {
         type: 'input',
         content: attachmentContent(message, attachments),
         whenBusy,
+        requestId,
       },
       BACKGROUND_CONTEXT
     )
@@ -130,6 +133,11 @@ export class ChatService {
     }, BACKGROUND_CONTEXT)
 
     if (!entry) return null
+
+    // Authorize before creating a branch or granting its ownership.
+    if (!(await isConversationOwner(String(entry.conversationId), userId))) {
+      return 'forbidden'
+    }
 
     const parentConv = await this.harness.conversation(
       entry.conversationId,

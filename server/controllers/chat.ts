@@ -29,7 +29,15 @@ export function createChatController({
         conversationId,
         whenBusy,
         attachmentIds = [],
+        requestId,
       } = req.body ?? {}
+      if (
+        requestId !== undefined &&
+        (typeof requestId !== 'string' ||
+          !/^[A-Za-z0-9_-]{1,128}$/.test(requestId))
+      ) {
+        return res.status(400).json({ error: 'Invalid submission ID.' })
+      }
       if (
         typeof message !== 'string' ||
         !Array.isArray(attachmentIds) ||
@@ -79,7 +87,8 @@ export function createChatController({
           targetConvId,
           message,
           whenBusy,
-          files
+          files,
+          requestId
         )
         if (!settled)
           return res.status(404).json({ error: 'Conversation not found' })
@@ -109,21 +118,15 @@ export function createChatController({
       const userId = res.locals.userId
 
       const forked = await chatService.forkConversation(messageIdNum, userId)
+      if (forked === 'forbidden') {
+        return res
+          .status(403)
+          .json({ error: 'Forbidden: Not conversation owner' })
+      }
       if (!forked) {
         return res
           .status(404)
           .json({ error: 'Message or parent conversation not found' })
-      }
-
-      if (
-        !(await isConversationOwner(
-          String(forked.parentConversationId),
-          userId
-        ))
-      ) {
-        return res
-          .status(403)
-          .json({ error: 'Forbidden: Not conversation owner' })
       }
 
       res.json({ success: true, newConversationId: forked.newConversationId })

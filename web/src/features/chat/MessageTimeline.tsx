@@ -15,7 +15,6 @@ type MessageTimelineProps = {
   scrollToBottom: () => void
   onSuggestion: (text: string) => void
   onFork?: (messageId: string) => void
-  onSubmitMessage?: (text: string) => void
 }
 
 export function MessageTimeline({
@@ -26,7 +25,6 @@ export function MessageTimeline({
   scrollToBottom,
   onSuggestion,
   onFork,
-  onSubmitMessage,
 }: MessageTimelineProps) {
   const reduceMotion = useReducedMotion()
   return (
@@ -63,8 +61,6 @@ export function MessageTimeline({
                   active={activeRunId === message.requestId}
                   isLast={index === messages.length - 1}
                   onFork={() => onFork?.(message.requestId)}
-                  onApprove={() => onSubmitMessage?.('Approved.')}
-                  onReject={() => onSubmitMessage?.('Rejected.')}
                 />
               )
             )}

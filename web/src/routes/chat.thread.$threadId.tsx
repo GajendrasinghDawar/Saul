@@ -205,7 +205,7 @@ function ChatTab() {
                     <button
                       type='button'
                       onClick={() => forkConversation(entry.id)}
-                      className='text-xs text-gray-400 hover:text-indigo-600 mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity'
+                      className='text-xs text-gray-400 hover:text-indigo-600 mt-1 flex items-center gap-1 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity'
                     >
                       <GitBranch className='w-3 h-3' /> Fork here
                     </button>
@@ -242,7 +242,7 @@ function ChatTab() {
                     <button
                       type='button'
                       onClick={() => forkConversation(entry.id)}
-                      className='text-xs text-gray-400 hover:text-indigo-600 mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity'
+                      className='text-xs text-gray-400 hover:text-indigo-600 mt-1 flex items-center gap-1 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity'
                     >
                       <GitBranch className='w-3 h-3' /> Fork here
                     </button>

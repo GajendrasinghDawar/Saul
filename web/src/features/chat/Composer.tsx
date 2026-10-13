@@ -60,17 +60,23 @@ export function Composer({
     connectionStatus === 'connected' &&
     !uploading &&
     !hasUploadError
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draft changes update the DOM scrollHeight before resizing.
   useEffect(() => {
     const textarea = textareaRef.current
     if (textarea) {
       textarea.style.height = '0px'
       textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`
     }
-  }, [])
+  }, [draft])
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (
+      event.key === 'Enter' &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing &&
+      event.nativeEvent.keyCode !== 229
+    ) {
       event.preventDefault()
-      event.currentTarget.form?.requestSubmit()
+      if (canSend) event.currentTarget.form?.requestSubmit()
     }
   }
 

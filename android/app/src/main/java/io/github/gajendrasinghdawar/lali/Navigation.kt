@@ -1,6 +1,8 @@
 package io.github.gajendrasinghdawar.lali
 
 import androidx.compose.runtime.*
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
@@ -26,6 +28,12 @@ fun MainNavigation(container: AppContainer) {
         })
     } else key(token) {
         val stack = rememberNavBackStack(ConversationList)
+        // Keep drafts, staged uploads and retry identity when a chat entry is popped.
+        // The store belongs to this authenticated session, not the selected destination.
+        val chats = remember { object : ViewModelStoreOwner {
+            override val viewModelStore = ViewModelStore()
+        } }
+        DisposableEffect(chats) { onDispose { chats.viewModelStore.clear() } }
         val current = stack.last()
         var connection by remember(current) { mutableStateOf(ConnectionStatus.Offline) }
         var signOutRequested by remember { mutableStateOf(false) }
@@ -51,7 +59,7 @@ fun MainNavigation(container: AppContainer) {
                         ConversationListScreen(state, { stack.add(Chat(it)) }, vm::create, vm::refresh, vm::rename, vm::delete)
                     }
                     entry<Chat> { destination ->
-                        ChatScreen(viewModel { ChatViewModel(destination.id, GatewayChatRepository(container.api), container.artifactRepository) }, onConnectionChange = { connection = it })
+                        ChatScreen(viewModel(viewModelStoreOwner = chats, key = destination.id) { ChatViewModel(destination.id, GatewayChatRepository(container.api), container.artifactRepository) }, onConnectionChange = { connection = it })
                     }
                     entry<Tasks> { TasksScreen(viewModel { TasksViewModel(container.taskRepository) }) }
                     entry<Settings> {

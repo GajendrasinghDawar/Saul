@@ -195,3 +195,24 @@ test('a canonical entry acknowledges at most one pending send and prefers waitin
   reconcilePendingMessages([{ ...message, requestId: 'last' }], pending, seen)
   assert.equal(pending.size, 0)
 })
+
+test('a confirmed retry reconciles with an entry already received before its HTTP response', () => {
+  const canonical: Message = { role: 'user', content: 'Again', requestId: '21' }
+  const pending = new Map<string, Message>()
+  const seen = new Set<string>()
+  reconcilePendingMessages([canonical], pending, seen)
+  pending.set('retry', {
+    ...canonical,
+    requestId: 'retry',
+    admittedEntryId: '21',
+    status: 'delivered',
+  })
+  reconcilePendingMessages(
+    [{ ...canonical, requestId: 'different' }],
+    pending,
+    seen
+  )
+  assert.equal(pending.size, 1)
+  reconcilePendingMessages([canonical], pending, seen)
+  assert.equal(pending.size, 0)
+})

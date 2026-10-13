@@ -1,4 +1,3 @@
-import crypto from 'node:crypto'
 import { Type } from '@earendil-works/pi-ai'
 import {
   defineExtension,
@@ -10,14 +9,19 @@ import {
 import { sql } from 'drizzle-orm'
 import { Resend } from 'resend'
 import { db } from '../db/index.ts'
-import { approvals, todos } from '../db/schema.ts'
+import { todos } from '../db/schema.ts'
 import { getSecret } from '../secretsManager.ts'
 import {
   DEFAULT_EMAIL_FROM,
   DEFAULT_EMAIL_SUBJECT,
   SYSTEM_PROMPT,
 } from './constants.ts'
-import { clearTodos, getUserIdForConversation, saveTodo } from './data.ts'
+import {
+  clearTodos,
+  getUserIdForConversation,
+  requestTodoClear,
+  saveTodo,
+} from './data.ts'
 
 export const saveTodoTool = defineTool({
   name: 'save_todo',
@@ -41,9 +45,11 @@ export const clearTodosTool = defineTool({
   description: 'Clear all pending todos from the database.',
   parameters: Type.Object({}),
   replay: 'safe',
-  execute: async (_args, api) => {
+  execute: async (_args, api, ctx) => {
     const userId = await getUserIdForConversation(String(api.conversationId))
-    await clearTodos(userId)
+    const proposalId = await api.memo<string>('todo-clear-approval', ctx)
+    if (!proposalId) throw new Error('A new approval is required.')
+    await clearTodos(userId, String(api.conversationId), proposalId)
     api.output(`Cleared all pending todos\n`)
     return { content: [{ type: 'text', text: 'Success: Cleared all todos.' }] }
   },
@@ -113,54 +119,24 @@ export const LaliExtension = defineExtension({
   hooks: [
     hook(ToolTask, {
       // beforeTool intercepts the tool execution. It's useful for injecting approval flows.
-      beforeTool: async (call, api, _ctx) => {
+      beforeTool: async (call, api, ctx) => {
         if (call.name === 'clear_todos') {
+          // Bind this durable task to one permission, including after restart.
+          if (await api.memo<string>('todo-clear-approval', ctx)) return {}
           const userId = await getUserIdForConversation(
             String(api.conversationId)
           )
 
-          const recentApprovals = await db
-            .select()
-            .from(approvals)
-            .where(
-              sql`${approvals.userId} = ${userId} AND ${approvals.action} = 'clear_todos'`
-            )
-            .orderBy(sql`${approvals.id} DESC`) // Just grab the latest
-            .limit(1)
-
-          const latest = recentApprovals[0]
-
-          // If there is no approval, or the last one was rejected, we need a new approval.
-          if (
-            !latest ||
-            latest.status === 'pending' ||
-            latest.status === 'rejected'
-          ) {
-            // If there's a pending one already, return that ID, else create a new one
-            const proposalId =
-              latest?.status === 'pending' ? latest.id : crypto.randomUUID()
-
-            if (!latest || latest.status === 'rejected') {
-              await db.insert(approvals).values({
-                id: proposalId,
-                userId,
-                action: 'clear_todos',
-                detail: 'Clear all pending todos',
-                status: 'pending',
-              })
-            }
-
-            // Returning a block string halts the tool execution and sends this message back to the LLM/UI.
+          const proposal = await requestTodoClear(
+            userId,
+            String(api.conversationId)
+          )
+          if (proposal.status !== 'approved') {
             return {
-              block: `[APPROVAL REQUIRED] Proposal ID: ${proposalId}. Please wait for the user to approve this action via the UI.`,
+              block: `[APPROVAL REQUIRED] Proposal ID: ${proposal.id}. Please wait for the user to approve this action via the UI.`,
             }
           }
-
-          // If it's approved, we let it run and consume the approval so it cannot be reused.
-          await db
-            .update(approvals)
-            .set({ status: 'consumed' })
-            .where(sql`${approvals.id} = ${latest.id}`)
+          await api.memo('todo-clear-approval', proposal.id, ctx)
         }
 
         return {} // Let other tools pass normally

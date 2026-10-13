@@ -89,18 +89,63 @@ export async function uploadFile(file: File): Promise<Attachment> {
   return res.json()
 }
 
-export async function approveEffect(id: string, digest: string): Promise<void> {
-  const res = await fetchWithCsrf(`/api/tasks/approvals/${id}/approve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ digest }),
+export type Approval = {
+  id: string
+  action: string
+  detail: string
+  status: 'pending' | 'approved' | 'rejected' | 'consumed'
+}
+
+export async function getApproval(id: string): Promise<Approval> {
+  const res = await fetch(`/api/tasks/approvals/${encodeURIComponent(id)}`, {
+    cache: 'no-store',
   })
-  if (!res.ok) throw new Error('Failed to approve effect')
+  if (!res.ok) throw new Error(await responseError(res))
+  const data: unknown = await res.json()
+  const approval =
+    typeof data === 'object' && data !== null && 'approval' in data
+      ? data.approval
+      : null
+  if (
+    typeof approval !== 'object' ||
+    approval === null ||
+    !('id' in approval) ||
+    approval.id !== id ||
+    !('action' in approval) ||
+    typeof approval.action !== 'string' ||
+    !('detail' in approval) ||
+    typeof approval.detail !== 'string' ||
+    !('status' in approval) ||
+    (approval.status !== 'pending' &&
+      approval.status !== 'approved' &&
+      approval.status !== 'rejected' &&
+      approval.status !== 'consumed')
+  )
+    throw new Error('Approval state is unavailable')
+  return {
+    id,
+    action: approval.action,
+    detail: approval.detail,
+    status: approval.status,
+  }
+}
+
+export async function approveEffect(id: string): Promise<void> {
+  const res = await fetchWithCsrf(
+    `/api/tasks/approvals/${encodeURIComponent(id)}/approve`,
+    {
+      method: 'POST',
+    }
+  )
+  if (!res.ok) throw new Error(await responseError(res))
 }
 
 export async function rejectEffect(id: string): Promise<void> {
-  const res = await fetchWithCsrf(`/api/tasks/approvals/${id}/reject`, {
-    method: 'POST',
-  })
-  if (!res.ok) throw new Error('Failed to reject effect')
+  const res = await fetchWithCsrf(
+    `/api/tasks/approvals/${encodeURIComponent(id)}/reject`,
+    {
+      method: 'POST',
+    }
+  )
+  if (!res.ok) throw new Error(await responseError(res))
 }

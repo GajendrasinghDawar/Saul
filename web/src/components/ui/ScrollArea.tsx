@@ -27,7 +27,7 @@ export function ScrollArea({
 }: ScrollAreaProps) {
   return (
     <Primitive.Root
-      className={cn('overflow-hidden', className)}
+      className={cn('overflow-clip', className)}
       type={type}
       {...props}
     >

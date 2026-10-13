@@ -13,12 +13,25 @@ import {
   getArtifactCapabilities,
   uploadFile,
 } from '../../lib/api'
-import { Composer, type StagedFile } from './Composer'
+import { Composer } from './Composer'
+import { useChatDraft } from './chat-drafts'
 import { MessageTimeline } from './MessageTimeline'
 import { useChatSession } from './use-chat-session'
 import { useScrollToBottom } from './useScrollToBottom'
 
 export function ChatPage({ sessionId }: { sessionId: string }) {
+  return <SessionChatPage key={sessionId} sessionId={sessionId} />
+}
+
+function SessionChatPage({ sessionId }: { sessionId: string }) {
+  const {
+    draft: draftState,
+    text: draft,
+    files: stagedFiles,
+    sending,
+  } = useChatDraft(sessionId)
+  const setDraft = draftState.setText
+  const setStagedFiles = draftState.setFiles
   const {
     messages,
     submitMessage,
@@ -27,24 +40,13 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
     connectionStatus,
     stop,
     forkMessage,
-  } = useChatSession(sessionId)
-  const draftKey = `lali-draft-${sessionId}`
-  const [draft, setDraft] = useState(
-    () => sessionStorage.getItem(draftKey) || ''
-  )
-  useEffect(() => {
-    sessionStorage.setItem(draftKey, draft)
-  }, [draft, draftKey])
-  const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([])
+  } = useChatSession(sessionId, draftState.attempt)
   const [capabilities, setCapabilities] = useState<ArtifactCapabilities | null>(
     null
   )
   const [attachmentNotice, setAttachmentNotice] = useState(
     'Checking attachment availability...'
   )
-  const [sending, setSending] = useState(false)
-  const sendingRef = useRef(false)
-  const stagedCountRef = useRef(0)
   useEffect(() => {
     let mounted = true
     void getArtifactCapabilities()
@@ -77,9 +79,9 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
     if (!event.target.files?.length) return
     const selected = Array.from(event.target.files)
     event.target.value = ''
-    if (sendingRef.current || !capabilities?.enabled) return
+    if (draftState.snapshot().sending || !capabilities?.enabled) return
     const maxFiles = Math.min(4, capabilities.maxFilesPerMessage)
-    if (stagedCountRef.current + selected.length > maxFiles) {
+    if (draftState.snapshot().files.length + selected.length > maxFiles) {
       toast.error(`Attach at most ${maxFiles} files per message.`)
       return
     }
@@ -109,7 +111,6 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
       )
       return
     }
-    stagedCountRef.current += selected.length
     const newFiles = selected.map(file => ({
       id: crypto.randomUUID(),
       file,
@@ -142,29 +143,24 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
+    const submitted = draftState.snapshot()
     if (
-      sendingRef.current ||
-      stagedFiles.some(file => file.uploading || file.error)
+      submitted.sending ||
+      submitted.files.some(file => file.uploading || file.error)
     )
       return
     const attachments = stagedFiles.flatMap(file =>
       file.attachment ? [file.attachment] : []
     )
     if (!draft.trim() && attachments.length === 0) return
-    sendingRef.current = true
-    setSending(true)
+    draftState.setSending(true)
     const sent = await submitMessage(
       draft.trim(),
       attachments,
       activeRunId ? 'steer' : undefined
     )
-    sendingRef.current = false
-    setSending(false)
-    if (sent) {
-      setDraft('')
-      setStagedFiles([])
-      stagedCountRef.current = 0
-    }
+    draftState.setSending(false)
+    if (sent) draftState.delivered(submitted.revision, submitted.files)
     setTimeout(scrollToBottom, 50)
   }
 
@@ -189,7 +185,6 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
         scrollToBottom={scrollToBottom}
         onSuggestion={setDraft}
         onFork={handleFork}
-        onSubmitMessage={text => void submitMessage(text)}
       />
       <Composer
         draft={draft}
@@ -201,8 +196,7 @@ export function ChatPage({ sessionId }: { sessionId: string }) {
         fileInputRef={fileInputRef}
         onFiles={event => void handleFileChange(event)}
         onRemoveFile={file => {
-          if (sendingRef.current) return
-          stagedCountRef.current = Math.max(0, stagedCountRef.current - 1)
+          if (draftState.snapshot().sending) return
           setStagedFiles(current => current.filter(item => item.file !== file))
         }}
         onSubmit={event => void handleSubmit(event)}

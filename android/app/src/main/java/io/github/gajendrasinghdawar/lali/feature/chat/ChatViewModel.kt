@@ -18,6 +18,8 @@ data class ChatUiState(val conversation: ConversationState = ConversationState()
 
 class ChatViewModel(private val id: String, private val repository: ChatRepository, private val artifacts: ArtifactRepository? = null) : ViewModel() {
     private val draft = MutableStateFlow("")
+    private var draftRevision = 0L
+    private var submitting = false
     private val thinking = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     private val attachments = MutableStateFlow(AttachmentDraft())
     val uiState = combine(repository.state, draft, thinking, attachments) { state, text, overrides, files -> ChatUiState(state, text, overrides, files) }
@@ -59,7 +61,7 @@ class ChatViewModel(private val id: String, private val repository: ChatReposito
             catch (_: Exception) { attachments.update { it.copy(notice = "Could not save the file. Check your connection and try again.") } }
         }
     }
-    fun editDraft(value: String) { draft.value = value }
+    fun editDraft(value: String) { draftRevision++; draft.value = value }
     fun toggleThinking(id: String) {
         val message = repository.state.value.projection.messages.find { it.id == id } ?: return
         thinking.update { it + (id to !(it[id] ?: !message.complete)) }
@@ -67,12 +69,16 @@ class ChatViewModel(private val id: String, private val repository: ChatReposito
     fun send() {
         val text = draft.value
         val files = attachments.value.files
-        if (!ChatUiState(repository.state.value, text, attachments = attachments.value).canSend) return
-        draft.value = ""
+        if (submitting || !ChatUiState(repository.state.value, text, attachments = attachments.value).canSend) return
+        val revision = draftRevision
+        submitting = true
         viewModelScope.launch {
-            if (repository.send(id, text, files.mapNotNull { it.file })) {
-                attachments.update { it.copy(files = it.files.filterNot { row -> files.any { sent -> sent.key == row.key } }) }
-            } else if (draft.value.isEmpty()) draft.value = text
+            try {
+                if (repository.send(id, text, files.mapNotNull { it.file })) {
+                    if (draftRevision == revision) draft.value = ""
+                    attachments.update { it.copy(files = it.files.filterNot { row -> files.any { sent -> sent.key == row.key } }) }
+                }
+            } finally { submitting = false }
         }
     }
 }

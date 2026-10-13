@@ -6,6 +6,7 @@ import {
   projectChatView,
   reconcilePendingMessages,
 } from './chat-view'
+import type { SendAttempt } from './send-attempt'
 
 export type Message = {
   role: 'user' | 'assistant'
@@ -14,6 +15,7 @@ export type Message = {
   thinkingContent?: string
   requestId: string
   idempotencyKey?: string
+  admittedEntryId?: string
   status?: 'sending' | 'delivered' | 'failed'
   activities?: string[]
   effects?: Effect[]
@@ -46,7 +48,7 @@ type StreamEvent = {
   view?: ChatView
 }
 
-export function useChatSession(sessionId: string) {
+export function useChatSession(sessionId: string, attempt: SendAttempt) {
   const [messages, setMessages] = useState<Message[]>([])
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -55,6 +57,7 @@ export function useChatSession(sessionId: string) {
   const pendingMessagesRef = useRef<Map<string, Message>>(new Map())
   const seenEntriesRef = useRef<Set<string>>(new Set())
   const initializedRef = useRef(false)
+  const canonicalMessagesRef = useRef<Message[]>([])
 
   useEffect(() => {
     setConnectionStatus('connecting')
@@ -65,6 +68,7 @@ export function useChatSession(sessionId: string) {
 
     const processView = (view: ChatView) => {
       const projection = projectChatView(view)
+      canonicalMessagesRef.current = projection.messages
 
       reconcilePendingMessages(
         projection.messages,
@@ -113,16 +117,18 @@ export function useChatSession(sessionId: string) {
   ) => {
     if (
       (activeRunId && whenBusy !== 'steer') ||
+      connectionStatus !== 'connected' ||
       !initializedRef.current ||
       (!text.trim() && attachments.length === 0)
     ) {
       return false
     }
 
-    const idempotencyKey =
-      typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : Date.now().toString(36) + Math.random().toString(36).substring(2)
+    const idempotencyKey = attempt.requestId(
+      text,
+      attachments.map(file => file.id),
+      whenBusy
+    )
     const pendingMessage: Message = {
       role: 'user',
       content: text,
@@ -133,13 +139,17 @@ export function useChatSession(sessionId: string) {
     }
 
     pendingMessagesRef.current.set(idempotencyKey, pendingMessage)
-    setMessages(current => [...current, pendingMessage])
+    setMessages(current => [
+      ...current.filter(message => message.requestId !== idempotencyKey),
+      pendingMessage,
+    ])
 
     try {
       const response = await fetchWithCsrf('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          requestId: idempotencyKey,
           conversationId: sessionId === 'main' ? undefined : sessionId,
           message: text,
           attachmentIds: attachments.map(file => file.id),
@@ -150,10 +160,32 @@ export function useChatSession(sessionId: string) {
       if (!response.ok) {
         throw new Error(await responseError(response))
       }
+      const data = (await response.json()) as { result: { entry?: number } }
+      const admittedEntryId =
+        data.result.entry === undefined ? undefined : String(data.result.entry)
+      if (
+        admittedEntryId &&
+        !canonicalMessagesRef.current.some(
+          message => message.requestId === admittedEntryId
+        )
+      ) {
+        pendingMessagesRef.current.set(idempotencyKey, {
+          ...pendingMessage,
+          requestId: admittedEntryId,
+          admittedEntryId,
+          status: 'delivered',
+        })
+      } else {
+        pendingMessagesRef.current.delete(idempotencyKey)
+      }
+      setMessages([
+        ...canonicalMessagesRef.current,
+        ...pendingMessagesRef.current.values(),
+      ])
+      attempt.confirmed(idempotencyKey)
       return true
     } catch (error) {
-      // A canonical stream entry confirms delivery even if the HTTP reply is lost.
-      if (!pendingMessagesRef.current.has(idempotencyKey)) return true
+      // Text alone cannot confirm which same-text request was delivered.
       console.error('Failed to send message', error)
       toast.error(
         error instanceof Error
