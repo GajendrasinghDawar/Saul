@@ -24,10 +24,10 @@ export function ActivityItem({
   const currentPhase =
     phase === 'disconnected'
       ? phase
-      : !active
-        ? 'complete'
-        : (phase ??
+      : active
+        ? (phase ??
           (thinking ? 'thinking' : activities.length ? 'tool' : 'waiting'))
+        : undefined
 
   const hasContent = activities.length > 0 || Boolean(thinking)
 
@@ -35,7 +35,7 @@ export function ActivityItem({
 
   return (
     <Collapsible open={open} onOpenChange={setManuallyOpen} className='mb-3'>
-      <ThinkingIndicator phase={currentPhase} />
+      {currentPhase && <ThinkingIndicator phase={currentPhase} />}
       {hasContent && (
         <CollapsibleTrigger
           className='mt-1 flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-slate11 hover:bg-slate3 hover:text-slate12 focus-visible:outline-2 focus-visible:outline-jade8 disabled:opacity-50'

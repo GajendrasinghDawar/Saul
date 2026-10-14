@@ -53,10 +53,8 @@ function SessionChatPage({
     connectionStatus,
     forkMessage,
     canQueue,
-    outboxItems,
-    outboxStatus,
-    retryOutboxItem,
-    removeOutboxItem,
+    retryMessage,
+    deleteMessage,
     resolvedConversationId,
   } = useChatSession(sessionId)
   const [capabilities, setCapabilities] = useState<ArtifactCapabilities | null>(
@@ -173,7 +171,6 @@ function SessionChatPage({
     const sent = await submitMessage(
       draft.trim(),
       attachments,
-      'followUp',
       submitted.reply?.entryId
     )
     draftState.setSending(false)
@@ -233,61 +230,9 @@ function SessionChatPage({
         }}
         targetEntryId={targetEntryId}
         connected={connectionStatus === 'connected'}
+        onRetryMessage={id => void retryMessage(id)}
+        onDeleteMessage={id => void deleteMessage(id)}
       />
-      {outboxItems.some(item => item.status !== 'delivered') && (
-        <section
-          aria-label='Message outbox'
-          className='mx-auto max-h-40 w-full max-w-3xl overflow-y-auto px-4 py-2 text-xs text-slate11'
-        >
-          <p className='mb-1 font-medium'>
-            Saved on this device ·{' '}
-            {outboxStatus === 'paused'
-              ? 'Sign in again to resume sending'
-              : 'Messages send in order when connected'}
-          </p>
-          {outboxItems
-            .filter(item => item.status !== 'delivered')
-            .map(item => (
-              <div
-                key={item.requestId}
-                className='flex items-center justify-between gap-2 border-t border-slate5 py-2'
-              >
-                <span className='min-w-0 truncate'>
-                  {item.message || item.attachments[0]?.name} —{' '}
-                  {item.status === 'queued'
-                    ? 'Waiting to send'
-                    : item.error || 'Confirming delivery'}
-                </span>
-                {item.status === 'failed' && (
-                  <button
-                    type='button'
-                    className='shrink-0 rounded px-2 py-2 text-jade11'
-                    onClick={() => void retryOutboxItem(item.requestId)}
-                  >
-                    Retry safely
-                  </button>
-                )}
-                {(item.status === 'queued' || item.status === 'failed') && (
-                  <button
-                    type='button'
-                    className='shrink-0 rounded px-2 py-2'
-                    onClick={() => {
-                      if (
-                        item.attempts === 0 ||
-                        window.confirm(
-                          'This message may already be on the server. Remove only the local record and stop retrying?'
-                        )
-                      )
-                        void removeOutboxItem(item.requestId)
-                    }}
-                  >
-                    {item.attempts === 0 ? 'Remove' : 'Forget locally'}
-                  </button>
-                )}
-              </div>
-            ))}
-        </section>
-      )}
       <Composer
         draft={draft}
         setDraft={setDraft}

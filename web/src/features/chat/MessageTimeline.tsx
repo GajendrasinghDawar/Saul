@@ -16,6 +16,8 @@ type MessageTimelineProps = {
   onSuggestion: (text: string) => void
   onFork?: (messageId: string) => void
   onReply?: (message: Message) => void
+  onRetryMessage?: (deliveryId: string) => void
+  onDeleteMessage?: (deliveryId: string) => void
   targetEntryId?: string
   connected?: boolean
 }
@@ -29,6 +31,8 @@ export function MessageTimeline({
   onSuggestion,
   onFork,
   onReply,
+  onRetryMessage,
+  onDeleteMessage,
   targetEntryId,
   connected = true,
 }: MessageTimelineProps) {
@@ -83,6 +87,22 @@ export function MessageTimeline({
                     attachments={message.attachments}
                     status={message.status}
                     reply={message.reply}
+                    onRetry={
+                      message.status === 'failed' && message.deliveryId
+                        ? () => {
+                            if (message.deliveryId)
+                              onRetryMessage?.(message.deliveryId)
+                          }
+                        : undefined
+                    }
+                    onDelete={
+                      message.status === 'failed' && message.deliveryId
+                        ? () => {
+                            if (message.deliveryId)
+                              onDeleteMessage?.(message.deliveryId)
+                          }
+                        : undefined
+                    }
                     onReply={
                       message.status === 'delivered' &&
                       /^\d+$/.test(message.requestId)

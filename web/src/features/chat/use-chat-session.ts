@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { type Attachment, fetchWithCsrf } from '../../lib/api'
 import type { ComposerReply } from './Composer'
-import { useChatOutbox } from './chat-drafts'
 import { type ChatView, projectChatView } from './chat-view'
-import type { BusyPolicy } from './outbox'
+import { mergeDeliveryMessages } from './delivery-messages'
+import { useMessageDelivery } from './message-delivery'
 import type { AssistantPhase } from './ThinkingIndicator'
 
 export type Message = {
@@ -12,9 +12,8 @@ export type Message = {
   attachments?: Attachment[]
   thinkingContent?: string
   requestId: string
-  idempotencyKey?: string
-  admittedEntryId?: string
-  status?: 'sending' | 'delivered' | 'failed'
+  deliveryId?: string
+  status?: 'sending' | 'waiting' | 'delivered' | 'failed'
   activities?: string[]
   effects?: Effect[]
   isComplete?: boolean
@@ -50,11 +49,26 @@ type StreamEvent = {
 }
 
 export function useChatSession(sessionId: string) {
-  const { outbox, items, paused, main } = useChatOutbox()
   const [canonicalMessages, setCanonicalMessages] = useState<Message[]>([])
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>('connecting')
+  const confirmedEntryIds = useMemo(
+    () =>
+      canonicalMessages.flatMap(
+        message => message.entryIds ?? [message.requestId]
+      ),
+    [canonicalMessages]
+  )
+  const {
+    pending,
+    resolvedConversationId,
+    canSend,
+    resolveMainConversation,
+    sendMessage,
+    retryMessage,
+    deleteMessage,
+  } = useMessageDelivery({ sessionId, confirmedEntryIds })
   useEffect(() => {
     setConnectionStatus('connecting')
     setCanonicalMessages([])
@@ -65,7 +79,7 @@ export function useChatSession(sessionId: string) {
       if ((data.type !== 'init' && data.type !== 'update') || !data.view) return
       setConnectionStatus('connected')
       if (sessionId === 'main' && data.conversationId)
-        void outbox.rememberMain(String(data.conversationId))
+        void resolveMainConversation(String(data.conversationId))
       const projection = projectChatView(data.view)
       setCanonicalMessages(projection.messages)
       setActiveRunId(projection.activeRunId)
@@ -97,71 +111,20 @@ export function useChatSession(sessionId: string) {
       window.removeEventListener('offline', offline)
       window.removeEventListener('online', connect)
     }
-  }, [sessionId, outbox])
+  }, [sessionId, resolveMainConversation])
 
-  useEffect(() => {
-    const ids = canonicalMessages.flatMap(
-      message => message.entryIds ?? [message.requestId]
-    )
-    if (
-      items.some(
-        item => item.admittedEntryId && ids.includes(item.admittedEntryId)
-      )
-    )
-      void outbox.acknowledge(ids)
-  }, [canonicalMessages, items, outbox])
-
-  const outboxItems = items.filter(
-    item => item.conversationId === (sessionId === 'main' ? main : sessionId)
-  )
-  const messages: Message[] = [
-    ...canonicalMessages,
-    ...outboxItems
-      .filter(
-        item =>
-          !item.admittedEntryId ||
-          !canonicalMessages.some(
-            message => message.requestId === item.admittedEntryId
-          )
-      )
-      .map(
-        (item): Message => ({
-          role: 'user',
-          content: item.message,
-          attachments: item.attachments,
-          requestId: item.admittedEntryId ?? item.requestId,
-          idempotencyKey: item.requestId,
-          admittedEntryId: item.admittedEntryId,
-          reply: item.replyToEntryId
-            ? {
-                entryId: item.replyToEntryId,
-                role: 'message',
-                text: 'Open referenced message',
-              }
-            : undefined,
-          status:
-            item.status === 'delivered'
-              ? 'delivered'
-              : item.status === 'failed' || item.status === 'unknown'
-                ? 'failed'
-                : 'sending',
-        })
-      ),
-  ]
+  const messages = mergeDeliveryMessages(canonicalMessages, pending)
   const submitMessage = async (
     text: string,
     attachments: Attachment[] = [],
-    whenBusy?: BusyPolicy,
     replyToEntryId?: string
   ) => {
     try {
-      return await outbox.enqueue(
-        sessionId,
+      return await sendMessage({
         text,
         attachments,
-        whenBusy,
-        replyToEntryId
-      )
+        replyToEntryId,
+      })
     } catch (error) {
       console.error('Could not persist send', error)
       return false
@@ -182,14 +145,9 @@ export function useChatSession(sessionId: string) {
     connectionStatus,
     submitMessage,
     forkMessage,
-    resolvedConversationId: sessionId === 'main' ? main : sessionId,
-    canQueue:
-      Boolean(navigator.locks) &&
-      !paused &&
-      (sessionId !== 'main' || Boolean(main)),
-    outboxItems,
-    outboxStatus: paused ? ('paused' as const) : ('ready' as const),
-    retryOutboxItem: (requestId: string) => outbox.retry(requestId),
-    removeOutboxItem: (requestId: string) => outbox.remove(requestId),
+    resolvedConversationId,
+    canQueue: canSend,
+    retryMessage,
+    deleteMessage,
   }
 }

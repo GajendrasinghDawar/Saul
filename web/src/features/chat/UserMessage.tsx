@@ -14,13 +14,17 @@ export function UserMessage({
   status,
   onFork,
   onReply,
+  onRetry,
+  onDelete,
   reply,
 }: {
   content: string
   attachments?: Attachment[]
-  status?: 'sending' | 'delivered' | 'failed'
+  status?: 'sending' | 'waiting' | 'delivered' | 'failed'
   onFork?: () => void
   onReply?: () => void
+  onRetry?: () => void
+  onDelete?: () => void
   reply?: ComposerReply
 }) {
   return (
@@ -63,13 +67,39 @@ export function UserMessage({
           </div>
         )}
         {status === 'failed' && (
-          <p role='status' className='mt-2 text-xs text-crimson11'>
-            Delivery is not confirmed. The saved outbox keeps the same retry ID.
-          </p>
+          <div
+            role='status'
+            className='mt-2 flex items-center gap-3 text-xs text-crimson11'
+          >
+            <span>Couldn’t send.</span>
+            {onRetry && (
+              <button
+                type='button'
+                className='font-medium text-jade11 hover:underline'
+                onClick={onRetry}
+              >
+                Retry
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type='button'
+                className='text-slate11 hover:underline'
+                onClick={onDelete}
+              >
+                Delete
+              </button>
+            )}
+          </div>
         )}
         {status === 'sending' && (
           <p role='status' className='mt-2 text-xs text-slate10'>
-            Saved on this device. Waiting for server confirmation.
+            Sending…
+          </p>
+        )}
+        {status === 'waiting' && (
+          <p role='status' className='mt-2 text-xs text-slate10'>
+            Waiting for connection…
           </p>
         )}
       </MessageContent>

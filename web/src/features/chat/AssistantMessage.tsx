@@ -66,7 +66,6 @@ export function AssistantMessage({
       <MessageContent>
         {(active ||
           phase === 'disconnected' ||
-          isComplete ||
           activities.length > 0 ||
           displayThinking) && (
           <ActivityItem

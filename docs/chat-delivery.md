@@ -13,7 +13,7 @@ These features adapt Campfire patterns without replacing Pi-Durable. This delive
 
 ## Persistent outbox
 
-The outbox saves each submitted message in user-scoped local storage before sending it. It retains an immutable payload, uploaded attachment references, target conversation ID and random request ID across reloads.
+The delivery module saves each submitted message in user-scoped local storage before sending it. It retains an immutable payload, uploaded attachment references, target conversation ID and random request ID across reloads. This persistence is hidden from the chat UI: pending state and recovery actions appear on the original message bubble, not in a separate outbox panel.
 
 For example, the server can accept a message but lose its HTTP response. The browser retries that same request ID. Pi-Durable returns the original submission instead of admitting a second turn. The client removes the local row only after it has a receipt and sees its exact entry in the transcript. Matching text from another device is not a receipt.
 
@@ -71,9 +71,9 @@ Manual checks:
 1. Start the app with `npm run dev`, sign in and open a chat. Enter several lines. Confirm growth, Shift+Enter and character-composition Enter behavior.
 2. Stage an image using the picker, paste or drop. Inspect its preview, then remove it. Switch between two conversations and check their drafts remain separate.
 3. Reply to an assistant message. Confirm the quoted source is correct and only the new text becomes message prose.
-4. In browser developer tools, set Network to Offline after the chat loads. Send text. Confirm the outbox row appears. Reconnect and confirm one saved message.
+4. In browser developer tools, set Network to Offline after the chat loads. Send text. Confirm its message bubble says **Waiting for connection…**. Reconnect and confirm one saved message.
 5. Simulate a lost chat response after server admission, then reload. Inspect Network and local storage: retries must retain the original request ID and produce one saved entry. Do not create a new send to retry uncertain work.
-6. Open the same account in two tabs. Queue messages in both. Check no row disappears and conversation ordering is preserved. Check failed rows offer an explicit retry, not silent resubmission with a new ID.
+6. Open the same account in two tabs. Queue messages in both. Check no message disappears and conversation ordering is preserved. Check failed message bubbles offer Retry and Delete without exposing request IDs.
 7. Watch an answer with reported thinking and a tool call. Inspect the work rows. Disconnect while streaming; confirm live animation stops and the connection label changes.
 8. Search for a distinctive saved phrase. Follow its source link. Confirm no chat POST occurs. Use continuation for older pages and check a source outside the current live view.
 9. Open Attention. Check approvals, reminders, failures and delivered reports. Approve in one browser and try Reject in another; only one decision may succeed. A conflict reloads the inbox. A failed refresh must not show stale cards as current.
