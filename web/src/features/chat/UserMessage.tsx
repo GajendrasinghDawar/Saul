@@ -1,4 +1,4 @@
-import { Download, GitFork } from 'lucide-react'
+import { Download, GitFork, Reply } from 'lucide-react'
 import {
   Message,
   MessageAction,
@@ -6,21 +6,37 @@ import {
   MessageContent,
 } from '../../components/message'
 import type { Attachment } from '../../lib/api'
+import type { ComposerReply } from './Composer'
 
 export function UserMessage({
   content,
   attachments = [],
   status,
   onFork,
+  onReply,
+  reply,
 }: {
   content: string
   attachments?: Attachment[]
   status?: 'sending' | 'delivered' | 'failed'
   onFork?: () => void
+  onReply?: () => void
+  reply?: ComposerReply
 }) {
   return (
     <Message from='user'>
       <MessageContent>
+        {reply && (
+          <a
+            href={`?entry=${encodeURIComponent(reply.entryId)}`}
+            className='mb-3 block rounded-lg border-l-2 border-jade8 bg-slate3 px-3 py-2 text-xs text-slate11'
+          >
+            <span className='block font-medium text-jade11'>
+              Reply to {reply.role}
+            </span>
+            <span className='line-clamp-2'>{reply.text}</span>
+          </a>
+        )}
         {content}
         {attachments.length > 0 && (
           <div className='mt-2 flex flex-wrap gap-2'>
@@ -48,21 +64,30 @@ export function UserMessage({
         )}
         {status === 'failed' && (
           <p role='status' className='mt-2 text-xs text-crimson11'>
-            Delivery not confirmed. Your draft and attachments are preserved.
-            Check the transcript before sending again.
+            Delivery is not confirmed. The saved outbox keeps the same retry ID.
           </p>
         )}
         {status === 'sending' && (
           <p role='status' className='mt-2 text-xs text-slate10'>
-            Sending...
+            Saved on this device. Waiting for server confirmation.
           </p>
         )}
       </MessageContent>
-      {onFork && (
+      {(onFork || onReply) && (
         <MessageActions className='transition-opacity [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover/message:opacity-100 focus-within:opacity-100'>
-          <MessageAction tooltip='Fork conversation from here' onClick={onFork}>
-            <GitFork size={15} />
-          </MessageAction>
+          {onReply && (
+            <MessageAction tooltip='Reply to message' onClick={onReply}>
+              <Reply size={15} />
+            </MessageAction>
+          )}
+          {onFork && (
+            <MessageAction
+              tooltip='Fork conversation from here'
+              onClick={onFork}
+            >
+              <GitFork size={15} />
+            </MessageAction>
+          )}
         </MessageActions>
       )}
     </Message>

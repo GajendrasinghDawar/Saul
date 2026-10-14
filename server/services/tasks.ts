@@ -4,6 +4,12 @@ import { sql } from 'drizzle-orm'
 import { getUserConversationIds } from '../agent/data.ts'
 import { db } from '../db/index.ts'
 import { approvals } from '../db/schema.ts'
+import {
+  type AttentionResponse,
+  attentionSource,
+  scanOwnedTasks,
+  taskAttention,
+} from './attention.ts'
 
 export class TaskService {
   harness: Harness
@@ -15,14 +21,60 @@ export class TaskService {
   async getUserTasks(userId: string) {
     const userConvIds = await getUserConversationIds(userId)
 
-    const result = await this.harness.commit(async tx => {
-      return tx.scanTasks({}, 100, undefined)
-    }, BACKGROUND_CONTEXT)
-
-    // Filter tasks down to only those that belong to the user's conversations
-    return result.items.filter(t =>
-      userConvIds.includes(String(t.conversationId))
+    return this.harness.commit(
+      tx => scanOwnedTasks(tx, userConvIds),
+      BACKGROUND_CONTEXT
     )
+  }
+
+  async getAttention(userId: string): Promise<AttentionResponse> {
+    const now = Date.now()
+    const conversationIds = await getUserConversationIds(userId)
+    const pending = await db
+      .select()
+      .from(approvals)
+      .where(
+        sql`${approvals.userId} = ${userId} AND ${approvals.status} = 'pending'`
+      )
+    const tasks = await this.harness.commit(
+      async tx =>
+        taskAttention(tx, await scanOwnedTasks(tx, conversationIds), now),
+      BACKGROUND_CONTEXT
+    )
+    const response: AttentionResponse = {
+      generatedAt: new Date(now).toISOString(),
+      groups: {
+        approvals: pending.map(approval => {
+          const conversationId = approval.action.startsWith('clear_todos:')
+            ? approval.action.slice('clear_todos:'.length)
+            : null
+          return {
+            id: `approval:${approval.id}`,
+            type: 'approval',
+            approvalId: approval.id,
+            title: conversationId
+              ? 'Clear pending todos?'
+              : 'Approval requested',
+            text: conversationId
+              ? 'Clear all pending todos, including new todos at execution time. Approval only grants permission; continue in the source chat to execute.'
+              : 'Review this request in its source before deciding.',
+            timestamp: null,
+            source:
+              conversationId && conversationIds.includes(conversationId)
+                ? attentionSource(conversationId)
+                : null,
+          }
+        }),
+        ...tasks,
+      },
+    }
+    for (const items of Object.values(response.groups))
+      items.sort(
+        (a, b) =>
+          (b.timestamp ?? '').localeCompare(a.timestamp ?? '') ||
+          a.id.localeCompare(b.id)
+      )
+    return response
   }
 
   async getApproval(id: string, userId: string) {

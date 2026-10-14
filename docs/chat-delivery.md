@@ -1,19 +1,40 @@
-# Chat delivery and composer safety
+# Web chat delivery and visible work
 
-This delivery adapts small Campfire patterns without replacing Pi-Durable.
+These features adapt Campfire patterns without replacing Pi-Durable. This delivery changes the web client and shared server APIs, not Android.
 
-## What changed
+## Composer and replies
 
 - Enter does not send during character composition. Shift+Enter adds a line.
-- The web composer grows and shrinks with its text, up to 120 pixels.
-- Copy and Fork remain visible on touch screens. Desktop hover behavior remains.
-- Each conversation keeps its own draft, staged files, and uncertain send attempt during navigation.
-- A successful send clears only its submitted files and an unedited draft. A late response cannot clear another conversation's draft.
-- Web and Android send a `requestId`. A manual retry of the same failed text, ordered attachment IDs, and busy policy uses the same ID. An edited payload or a new send after success gets a new ID.
-- Pi-Durable admits one submission per conversation and request ID. A retry can return the original result, even after a server restart. Clients use the returned entry ID to remove an already-delivered optimistic row.
-- Fork ownership is checked before branch creation or ownership writes.
+- The slate-and-jade composer grows from 72 to 240 pixels. Touch controls remain visible.
+- Each conversation keeps its own text draft, staged files and reply selection during navigation. Text drafts use user-scoped tab-session storage.
+- Images have local previews. Picker, paste and drop use the same validation and upload path. Removed previews release their object URLs.
+- Reply selects a saved user or assistant message. The server checks ownership and fork visibility, then builds the quote from saved history. Client-provided quote text is not trusted.
+- Replies are follow-ups, not steering commands. There is no Stop execution control in this delivery.
 
-There is no automatic resend or offline send queue. Matching message text from another device does not confirm an uncertain HTTP request.
+## Persistent outbox
+
+The outbox saves each submitted message in user-scoped local storage before sending it. It retains an immutable payload, uploaded attachment references, target conversation ID and random request ID across reloads.
+
+For example, the server can accept a message but lose its HTTP response. The browser retries that same request ID. Pi-Durable returns the original submission instead of admitting a second turn. The client removes the local row only after it has a receipt and sees its exact entry in the transcript. Matching text from another device is not a receipt.
+
+- Offline messages queue in an already loaded, authenticated app. They send when connectivity returns.
+- Web Locks coordinate browser tabs. Short queue writes do not wait for a pending network response.
+- Sends stay in order within a conversation. A failed head blocks that conversation, not every conversation.
+- Uncertain failures retry with backoff. After eight automatic attempts, the user can retry with the same ID. Permanent request errors require manual action. Authentication failures pause sending until the app authenticates again.
+- Removing an unattempted row cancels that local send. Forgetting a failed, attempted row does not cancel server work; the UI warns before doing so.
+- The main conversation must resolve to its canonical ID before an offline send. HTTPS or localhost and browser Web Locks are required.
+
+## Search and attention
+
+Search reads only saved visible user and assistant prose from owned conversations, including visible fork ancestors. It excludes tool output, reported thinking and internal attachment/reply markers. Each page scans at most 200 entries in one conversation. Use **Search more history** to continue. Search never runs the model or tools.
+
+Search results link to their original entry. If compaction removed that entry from the live view, the chat shows a saved source excerpt with a Reply action.
+
+The attention inbox collects pending approvals, due reminders, failed tasks and delivered delegated reports. Ordinary completed tools and turns are not results. Open the inbox or use Refresh to read current state. Items remain until their source changes; read/dismiss tracking is not implemented.
+
+## Visible agent work
+
+The transcript shows waiting, reported thinking, tool activity and answer streaming from Pi's live view. Inspect a work row to read available reported text or tool output. These are received events, not a percentage estimate or access to unreported model reasoning. Pulse animation respects reduced-motion preferences. A disconnected stream shows its last received state without a live animation.
 
 ## Approvals
 
@@ -27,10 +48,11 @@ Approving a card records permission; it does not start a new agent turn. Send a 
 
 ## Limits
 
-- Retry identities and staged files survive conversation navigation, not a browser reload or Android process/activity recreation. Check the transcript before retrying after either event.
-- Web text drafts retain the existing tab-session storage. Android drafts remain in memory for the authenticated session.
-- Old unscoped todo-clear approvals cannot authorize the new scoped tool. Request a new proposal; no compatibility cutover is provided.
-- This change does not add image previews, referenced replies, history search, an attention inbox, or Stop execution.
+- This is not an offline-installable app. A cold page load still needs the server to verify the session and load the application.
+- Unsent file bytes and reply selections remain in memory. Upload files while connected before queueing them. A queued send persists uploaded references, not local file bytes.
+- Browser storage is not a backup. Clearing it loses drafts and pending retry identities. Queued text is readable by same-origin scripts; use only a trusted browser profile.
+- Android retains its previous behavior. Its retry identities do not survive process/activity recreation.
+- Old unscoped todo-clear approvals cannot authorize the scoped tool. Request a new proposal.
 
 ## Checks
 
@@ -40,18 +62,19 @@ Run from the repository root:
 npx tsc --noEmit
 node --test server/test/*.test.ts web/test/*.test.ts
 npm run build --prefix web
-
-$env:JAVA_HOME = "C:\Users\dawar\.jdks\jbr-17.0.14"
-.\android\gradlew.bat -p android testDebugUnitTest lintDebug assembleDebug --console=plain
 ```
 
-The backend chat test uses temporary SQLite files, an in-memory account database, fixture identities, and a fake model. It checks restart deduplication, concurrent admission, unauthorized forks, approval decisions, and replay-safe todo completion. It does not test real authentication or a paid model.
+Backend tests use temporary SQLite files, in-memory account databases, fixture identities and a fake model. They check restart deduplication, concurrent admission, fork/reply ownership, read-only search pagination, approval decisions, attention selection and replay-safe todo completion. Outbox tests check reloads, cross-tab writes, retry ordering, authentication pauses and storage failure. These tests do not verify real authentication, S3 credentials or a paid model.
 
 Manual checks:
 
-1. Enter four lines. Confirm the composer grows. Use a character-composition keyboard and confirm its Enter key does not send.
-2. Write a draft and stage a file in chat A. Open chat B. Return to A. Confirm the draft and file remain only in A.
-3. Submit in A, then open B before the response finishes. Write in B. Confirm A's response does not clear B.
-4. On a phone, find Copy and Fork without hover.
-5. For an uncertain delivery, retry the unchanged draft without reloading. Confirm one user entry exists. The Network panel must show the same request ID.
-6. Request a todo clear. Approve in one browser and try Reject in another. Only one decision may succeed. Reload the card to see the saved state.
+1. Start the app with `npm run dev`, sign in and open a chat. Enter several lines. Confirm growth, Shift+Enter and character-composition Enter behavior.
+2. Stage an image using the picker, paste or drop. Inspect its preview, then remove it. Switch between two conversations and check their drafts remain separate.
+3. Reply to an assistant message. Confirm the quoted source is correct and only the new text becomes message prose.
+4. In browser developer tools, set Network to Offline after the chat loads. Send text. Confirm the outbox row appears. Reconnect and confirm one saved message.
+5. Simulate a lost chat response after server admission, then reload. Inspect Network and local storage: retries must retain the original request ID and produce one saved entry. Do not create a new send to retry uncertain work.
+6. Open the same account in two tabs. Queue messages in both. Check no row disappears and conversation ordering is preserved. Check failed rows offer an explicit retry, not silent resubmission with a new ID.
+7. Watch an answer with reported thinking and a tool call. Inspect the work rows. Disconnect while streaming; confirm live animation stops and the connection label changes.
+8. Search for a distinctive saved phrase. Follow its source link. Confirm no chat POST occurs. Use continuation for older pages and check a source outside the current live view.
+9. Open Attention. Check approvals, reminders, failures and delivered reports. Approve in one browser and try Reject in another; only one decision may succeed. A conflict reloads the inbox. A failed refresh must not show stale cards as current.
+10. At phone width, check the composer, previews, actions, Search and Attention without horizontal overflow. Enable reduced motion and check the pulse stops.

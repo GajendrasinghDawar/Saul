@@ -4,8 +4,8 @@ import {
   type ConversationId,
   type EntryId,
 } from '@earendil-works/pi-durable'
-import type { Request, Response } from 'express'
 import { asc, eq } from 'drizzle-orm'
+import type { Request, Response } from 'express'
 import { isConversationOwner } from '../agent/data.ts'
 import type { AppDependencies } from '../app.ts'
 import { db } from '../db/index.ts'
@@ -36,10 +36,23 @@ export function createChatController({
         requestId,
         replyToEntryId,
       } = req.body ?? {}
-      if (replyToEntryId !== undefined && (typeof replyToEntryId !== 'number' || !Number.isSafeInteger(replyToEntryId) || replyToEntryId < 1 || !conversationId)) {
-        return res.status(400).json({ error: 'Replies require a canonical entry ID and target conversation ID.' })
+      if (
+        replyToEntryId !== undefined &&
+        (typeof replyToEntryId !== 'number' ||
+          !Number.isSafeInteger(replyToEntryId) ||
+          replyToEntryId < 1 ||
+          !conversationId)
+      ) {
+        return res.status(400).json({
+          error:
+            'Replies require a canonical entry ID and target conversation ID.',
+        })
       }
-      if (conversationId !== undefined && (!Number.isSafeInteger(Number(conversationId)) || Number(conversationId) < 1)) {
+      if (
+        conversationId !== undefined &&
+        (!Number.isSafeInteger(Number(conversationId)) ||
+          Number(conversationId) < 1)
+      ) {
         return res.status(400).json({ error: 'Invalid conversation ID.' })
       }
       if (
@@ -87,12 +100,24 @@ export function createChatController({
         // Ownership is already checked. Retry the original admitted submission,
         // even if a later request body names a different reply or attachment.
         if (requestId) {
-          const original = await chatService.existingSubmission(targetConvId, requestId)
-          if (original) return res.json({ success: true, result: await original.wait(BACKGROUND_CONTEXT) })
+          const original = await chatService.existingSubmission(
+            targetConvId,
+            requestId
+          )
+          if (original)
+            return res.json({
+              success: true,
+              result: await original.wait(BACKGROUND_CONTEXT),
+            })
         }
-        const reply = replyToEntryId === undefined ? undefined : await resolveReply(harness, targetConvId, replyToEntryId)
+        const reply =
+          replyToEntryId === undefined
+            ? undefined
+            : await resolveReply(harness, targetConvId, replyToEntryId)
         if (replyToEntryId !== undefined && !reply) {
-          return res.status(404).json({ error: 'Referenced message is not visible in this conversation.' })
+          return res.status(404).json({
+            error: 'Referenced message is not visible in this conversation.',
+          })
         }
         const agent = await conv.agent(BACKGROUND_CONTEXT)
         const ref = agent.model
@@ -132,17 +157,61 @@ export function createChatController({
     async search(req: Request, res: Response) {
       const q = req.query.q
       const cursor = req.query.cursor
-      if (typeof q !== 'string' || !q.trim() || q.length > 200 || (cursor !== undefined && (typeof cursor !== 'string' || cursor.length > 100 || !/^\d+:\d*$/.test(cursor)))) {
-        return res.status(400).json({ error: 'Use a search query of 1–200 characters and a valid cursor.' })
+      if (
+        typeof q !== 'string' ||
+        !q.trim() ||
+        q.length > 200 ||
+        (cursor !== undefined &&
+          (typeof cursor !== 'string' ||
+            cursor.length > 100 ||
+            !/^\d+:\d*$/.test(cursor)))
+      ) {
+        return res.status(400).json({
+          error: 'Use a search query of 1–200 characters and a valid cursor.',
+        })
       }
-      const conversations = await db.select({ conversationId: userConversations.conversationId, title: userConversations.title }).from(userConversations).where(eq(userConversations.userId, String(res.locals.userId))).orderBy(asc(userConversations.conversationId))
+      const conversations = await db
+        .select({
+          conversationId: userConversations.conversationId,
+          title: userConversations.title,
+        })
+        .from(userConversations)
+        .where(eq(userConversations.userId, String(res.locals.userId)))
+        .orderBy(asc(userConversations.conversationId))
       res.setHeader('Cache-Control', 'no-store')
       try {
-        return res.json(await searchHistory(harness, conversations, q.trim(), cursor))
+        return res.json(
+          await searchHistory(harness, conversations, q.trim(), cursor)
+        )
       } catch (error) {
-        if (error instanceof Error && error.message === 'Invalid search cursor.') return res.status(400).json({ error: error.message })
+        if (
+          error instanceof Error &&
+          error.message === 'Invalid search cursor.'
+        )
+          return res.status(400).json({ error: error.message })
         return res.status(500).json({ error: 'Could not search history.' })
       }
+    },
+
+    async sourceMessage(req: Request, res: Response) {
+      const conversationId = Number(req.params.conversationId) as ConversationId
+      const entryId = Number(req.params.entryId)
+      res.setHeader('Cache-Control', 'no-store')
+      if (
+        !Number.isSafeInteger(conversationId) ||
+        conversationId < 1 ||
+        !Number.isSafeInteger(entryId) ||
+        entryId < 1
+      )
+        return res.status(400).json({ error: 'Invalid source message.' })
+      if (
+        !(await isConversationOwner(String(conversationId), res.locals.userId))
+      )
+        return res.status(404).json({ error: 'Source message is unavailable.' })
+      const message = await resolveReply(harness, conversationId, entryId)
+      if (!message)
+        return res.status(404).json({ error: 'Source message is unavailable.' })
+      return res.json({ message })
     },
 
     async newThread(_req: Request, res: Response) {
@@ -205,10 +274,18 @@ export function createChatController({
       }
 
       const view = await conv.viewState(BACKGROUND_CONTEXT)
-      writeEvent({ type: 'init', conversationId: String(conv.id), view: view.value })
+      writeEvent({
+        type: 'init',
+        conversationId: String(conv.id),
+        view: view.value,
+      })
 
       const unsubscribe = view.subscribe(value => {
-        writeEvent({ type: 'update', conversationId: String(conv.id), view: value })
+        writeEvent({
+          type: 'update',
+          conversationId: String(conv.id),
+          view: value,
+        })
       })
 
       req.on('close', () => {

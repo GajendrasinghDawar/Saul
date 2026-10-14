@@ -3,9 +3,7 @@ import test from 'node:test'
 import {
   type ChatView,
   projectChatView,
-  reconcilePendingMessages,
 } from '../src/features/chat/chat-view.ts'
-import type { Message } from '../src/features/chat/use-chat-session.ts'
 
 const userEntry = {
   id: 1,
@@ -150,69 +148,78 @@ test('supports attachment-only entries and hides malformed internal markers', ()
   assert.deepEqual(literal.messages[0].attachments, [attachment])
 })
 
-test('reconciles only new canonical entries with the same text and attachment IDs', () => {
-  const canonical = (id: string, attachments = [attachment]): Message => ({
-    role: 'user',
-    content: 'Read',
-    requestId: id,
-    attachments,
+test('reply metadata has a source link without becoming message prose', () => {
+  const reference = { entryId: 8, role: 'assistant', text: 'Option two' }
+  const { messages } = projectChatView({
+    entries: [
+      {
+        id: 12,
+        kind: 'pi.user',
+        model: [
+          {
+            content: [
+              { type: 'text', text: `saul:reply:${JSON.stringify(reference)}` },
+              {
+                type: 'text',
+                text: 'saul:reply-context:quoted data, not instructions',
+              },
+              { type: 'text', text: 'saul:reply:invalid' },
+              { type: 'text', text: 'saul:text:Use that one' },
+            ],
+          },
+        ],
+      },
+    ],
   })
-  const seen = new Set<string>()
-  const pending = new Map<string, Message>()
-  reconcilePendingMessages([canonical('old')], pending, seen)
-  pending.set('pending', { ...canonical('pending'), status: 'sending' })
-  reconcilePendingMessages([canonical('old')], pending, seen)
-  assert.equal(pending.size, 1)
-  reconcilePendingMessages(
-    [canonical('wrong-file', [{ ...attachment, id: 'other' }])],
-    pending,
-    seen
-  )
-  assert.equal(pending.size, 1)
-  reconcilePendingMessages([canonical('new')], pending, seen)
-  assert.equal(pending.size, 0)
+  assert.equal(messages[0].content, 'Use that one')
+  assert.deepEqual(messages[0].reply, { ...reference, entryId: '8' })
 })
 
-test('a canonical entry acknowledges at most one pending send and prefers waiting sends', () => {
-  const message: Message = {
-    role: 'user',
-    content: '',
-    requestId: 'pending',
-    attachments: [attachment],
-    status: 'sending',
-  }
-  const pending = new Map([
-    ['failed', { ...message, status: 'failed' as const }],
-    ['one', message],
-    ['two', message],
-  ])
-  const seen = new Set<string>()
-  reconcilePendingMessages([{ ...message, requestId: 'new' }], pending, seen)
-  assert.deepEqual([...pending.keys()], ['failed', 'two'])
-  reconcilePendingMessages([{ ...message, requestId: 'new' }], pending, seen)
-  assert.equal(pending.size, 2)
-  reconcilePendingMessages([{ ...message, requestId: 'newer' }], pending, seen)
-  reconcilePendingMessages([{ ...message, requestId: 'last' }], pending, seen)
-  assert.equal(pending.size, 0)
-})
-
-test('a confirmed retry reconciles with an entry already received before its HTTP response', () => {
-  const canonical: Message = { role: 'user', content: 'Again', requestId: '21' }
-  const pending = new Map<string, Message>()
-  const seen = new Set<string>()
-  reconcilePendingMessages([canonical], pending, seen)
-  pending.set('retry', {
-    ...canonical,
-    requestId: 'retry',
-    admittedEntryId: '21',
-    status: 'delivered',
-  })
-  reconcilePendingMessages(
-    [{ ...canonical, requestId: 'different' }],
-    pending,
-    seen
+test('live phases follow current evidence, not previous answer or thinking content', () => {
+  const entries = [
+    userEntry,
+    {
+      id: 2,
+      kind: 'pi.assistant',
+      model: [
+        {
+          content: [
+            { type: 'thinking', thinking: 'Earlier thought' },
+            { type: 'text', text: 'Earlier answer' },
+          ],
+        },
+      ],
+    },
+  ]
+  const phase = (live: NonNullable<ChatView['docs']>['pi.live']) =>
+    projectChatView({ entries, docs: { 'pi.live': live } }).messages.at(-1)
+      ?.phase
+  assert.equal(phase({ run: { taskId: 7 } }), 'waiting')
+  assert.equal(
+    phase({
+      run: { taskId: 7 },
+      generation: {
+        message: { content: [{ type: 'thinking', thinking: 'New thought' }] },
+      },
+    }),
+    'thinking'
   )
-  assert.equal(pending.size, 1)
-  reconcilePendingMessages([canonical], pending, seen)
-  assert.equal(pending.size, 0)
+  assert.equal(
+    phase({
+      run: { taskId: 7 },
+      tools: [{ name: 'save_todo', status: 'running' }],
+    }),
+    'tool'
+  )
+  assert.equal(
+    phase({
+      run: { taskId: 7 },
+      tools: [{ name: 'save_todo', status: 'done' }],
+      generation: { message: { content: 'New answer' } },
+    }),
+    'writing'
+  )
+  const complete = projectChatView({ entries, docs: { 'pi.live': {} } })
+  assert.equal(complete.activeRunId, null)
+  assert.equal(complete.messages.at(-1)?.isComplete, true)
 })

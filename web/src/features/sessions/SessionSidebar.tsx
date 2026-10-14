@@ -2,9 +2,11 @@ import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   Activity,
   Edit2,
+  Inbox,
   MessageSquare,
   MoreHorizontal,
   Plus,
+  Search,
   Settings,
   Trash2,
 } from 'lucide-react'
@@ -51,6 +53,8 @@ import {
 } from './session-api'
 
 const primaryNavigation = [
+  { to: '/search', label: 'Search', icon: Search },
+  { to: '/inbox', label: 'Attention', icon: Inbox },
   { to: '/tasks', label: 'Tasks', icon: Activity },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const

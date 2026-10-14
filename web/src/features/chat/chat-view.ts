@@ -1,4 +1,5 @@
 import type { Attachment } from '../../lib/api'
+import type { ComposerReply } from './Composer'
 import type { Message } from './use-chat-session'
 
 type ContentPart = {
@@ -22,6 +23,11 @@ type ViewEntry = {
 type LiveState = {
   run?: { taskId: string | number }
   generation?: { message?: ModelMessage }
+  tools?: {
+    name: string
+    status: 'pending' | 'running' | 'done'
+    output?: string
+  }[]
 }
 
 export type ChatView = {
@@ -35,49 +41,40 @@ export type ChatProjection = {
   isBusy: boolean
 }
 
-export function reconcilePendingMessages(
-  canonical: Message[],
-  pending: Map<string, Message>,
-  seen: Set<string>
-) {
-  for (const [key, candidate] of pending) {
-    if (
-      candidate.admittedEntryId &&
-      canonical.some(message => message.requestId === candidate.admittedEntryId)
-    ) {
-      pending.delete(key)
-    }
-  }
-  for (const message of canonical) {
-    if (message.role !== 'user' || seen.has(message.requestId)) continue
-    seen.add(message.requestId)
-    for (const [key, candidate] of [...pending].sort(
-      (a, b) =>
-        Number(a[1].status === 'failed') - Number(b[1].status === 'failed')
-    )) {
-      const ids = (message.attachments ?? []).map(file => file.id).sort()
-      const pendingIds = (candidate.attachments ?? [])
-        .map(file => file.id)
-        .sort()
-      if (
-        !candidate.admittedEntryId &&
-        message.content === candidate.content &&
-        JSON.stringify(ids) === JSON.stringify(pendingIds)
-      ) {
-        pending.delete(key)
-        break
-      }
-    }
-  }
-}
-
 function parseUserContent(content: ModelMessage['content']) {
   const attachments: Attachment[] = []
+  let reply: ComposerReply | undefined
   if (typeof content === 'string') return { text: content, attachments }
   let text = ''
   for (const part of content ?? []) {
     if (part.type !== 'text') continue
     const value = part.text ?? ''
+    if (value.startsWith('saul:reply-context:')) continue
+    if (value.startsWith('saul:reply:')) {
+      try {
+        const reference: unknown = JSON.parse(value.slice('saul:reply:'.length))
+        if (
+          typeof reference === 'object' &&
+          reference !== null &&
+          'entryId' in reference &&
+          typeof reference.entryId === 'number' &&
+          Number.isSafeInteger(reference.entryId) &&
+          reference.entryId > 0 &&
+          'role' in reference &&
+          (reference.role === 'user' || reference.role === 'assistant') &&
+          'text' in reference &&
+          typeof reference.text === 'string'
+        )
+          reply = {
+            entryId: String(reference.entryId),
+            role: reference.role,
+            text: reference.text,
+          }
+      } catch {
+        /* Internal malformed reference metadata is never transcript prose. */
+      }
+      continue
+    }
     if (value.startsWith('saul:text:')) {
       text += value.slice('saul:text:'.length)
       continue
@@ -113,7 +110,7 @@ function parseUserContent(content: ModelMessage['content']) {
       /* Never expose internal attachment markers in the transcript. */
     }
   }
-  return { text, attachments }
+  return { text, attachments, reply }
 }
 
 function createAssistant(requestId: string): Message {
@@ -123,6 +120,7 @@ function createAssistant(requestId: string): Message {
     requestId,
     activities: [],
     effects: [],
+    entryIds: [],
   }
 }
 
@@ -155,13 +153,14 @@ export function projectChatView(view: ChatView): ChatProjection {
     const model = entry.model?.[0]
     if (entry.kind === 'pi.user') {
       if (currentAssistant) currentAssistant.isComplete = true
-      const { text, attachments } = parseUserContent(model?.content)
+      const { text, attachments, reply } = parseUserContent(model?.content)
       messages.push({
         role: 'user',
         content: text,
         attachments,
         requestId: String(entry.id),
         status: 'delivered',
+        reply,
       })
       currentAssistant = null
       continue
@@ -173,6 +172,18 @@ export function projectChatView(view: ChatView): ChatProjection {
         messages.push(currentAssistant)
       }
       appendAssistantContent(currentAssistant, model?.content)
+      currentAssistant.entryIds?.push(String(entry.id))
+      const text =
+        typeof model?.content === 'string'
+          ? model.content
+          : model?.content
+              ?.filter(part => part.type === 'text')
+              .map(part => part.text ?? '')
+              .join('')
+      if (text) {
+        currentAssistant.replyEntryId = String(entry.id)
+        currentAssistant.replyText = text
+      }
       continue
     }
 
@@ -207,6 +218,23 @@ export function projectChatView(view: ChatView): ChatProjection {
       messages.push(currentAssistant)
     }
     appendAssistantContent(currentAssistant, live.generation?.message?.content)
+    const content = live.generation?.message?.content
+    const parts =
+      typeof content === 'string'
+        ? [{ type: 'text', text: content }]
+        : (content ?? [])
+    const tools = live.tools?.filter(tool => tool.status !== 'done') ?? []
+    currentAssistant.phase = tools.length
+      ? 'tool'
+      : parts.some(part => part.type === 'text' && part.text)
+        ? 'writing'
+        : parts.some(part => part.type === 'thinking' && part.thinking)
+          ? 'thinking'
+          : 'waiting'
+    for (const tool of tools)
+      currentAssistant.activities?.push(
+        `${tool.name}: ${tool.status}${tool.output ? `\n${tool.output}` : ''}`
+      )
     return {
       messages,
       activeRunId: currentAssistant.requestId,

@@ -1,4 +1,4 @@
-import { ChevronDown, Sparkles } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { MessageResponse } from '../../components/message'
 import {
@@ -7,68 +7,80 @@ import {
   CollapsibleTrigger,
 } from '../../components/ui/Collapsible'
 import { cn } from '../../lib/cn'
+import { type AssistantPhase, ThinkingIndicator } from './ThinkingIndicator'
 
 export function ActivityItem({
   activities,
   active,
   thinking,
+  phase,
 }: {
   activities: string[]
   active: boolean
   thinking?: string
+  phase?: AssistantPhase
 }) {
   const [manuallyOpen, setManuallyOpen] = useState(false)
-  let latest = 'Thinking...'
-  if (thinking) {
-    latest = 'Thinking...'
-  } else if (activities.length > 0) {
-    latest = activities.at(-1) as string
-  }
+  const currentPhase =
+    phase === 'disconnected'
+      ? phase
+      : !active
+        ? 'complete'
+        : (phase ??
+          (thinking ? 'thinking' : activities.length ? 'tool' : 'waiting'))
 
   const hasContent = activities.length > 0 || Boolean(thinking)
 
-  const open = active && thinking ? true : manuallyOpen
+  const open = manuallyOpen
 
   return (
     <Collapsible open={open} onOpenChange={setManuallyOpen} className='mb-3'>
-      <CollapsibleTrigger
-        className='flex items-center gap-2 rounded text-sm font-medium text-slate10 hover:text-slate12 disabled:opacity-50'
-        disabled={!hasContent}
-      >
-        <Sparkles size={14} className='text-jade10' />
-        <span
-          className={cn(
-            active &&
-              'bg-gradient-to-r from-slate10 via-slate12 to-slate10 bg-[length:200%_auto] bg-clip-text text-transparent animate-[shimmer_2s_linear_infinite]'
-          )}
-        >
-          {active
-            ? latest
-            : thinking
-              ? 'Thought Process'
-              : `Activity (${activities.length})`}
-        </span>
-        {hasContent && (
-          <ChevronDown
-            size={14}
-            className={cn('transition-transform', open && 'rotate-180')}
-          />
-        )}
-      </CollapsibleTrigger>
+      <ThinkingIndicator phase={currentPhase} />
       {hasContent && (
-        <CollapsibleContent className='ml-2 mt-2 space-y-1 border-l border-slate5 pl-5 text-xs text-slate9'>
+        <CollapsibleTrigger
+          className='mt-1 flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-slate11 hover:bg-slate3 hover:text-slate12 focus-visible:outline-2 focus-visible:outline-jade8 disabled:opacity-50'
+          disabled={!hasContent}
+        >
+          <span>
+            {hasContent
+              ? `Inspect reported work${activities.length ? ` (${activities.length})` : ''}`
+              : 'No work reported yet'}
+          </span>
+          {hasContent && (
+            <ChevronDown
+              size={14}
+              className={cn(
+                'transition-transform motion-reduce:transition-none',
+                open && 'rotate-180'
+              )}
+            />
+          )}
+        </CollapsibleTrigger>
+      )}
+      {hasContent && (
+        <CollapsibleContent className='ml-2 mt-2 space-y-2 border-l border-slate6 pl-5 text-xs text-slate11'>
           {activities.map((activity, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: order is fixed
-            <div key={`${index}-${activity}`}>{activity}</div>
+            <pre
+              className='whitespace-pre-wrap break-words font-sans'
+              // biome-ignore lint/suspicious/noArrayIndexKey: append-only stateless work rows can contain identical output
+              key={`${index}-${activity}`}
+            >
+              {activity}
+            </pre>
           ))}
           {thinking && (
-            <MessageResponse
-              className='mt-2 text-xs opacity-80'
-              mode={active ? 'streaming' : 'static'}
-              isAnimating={active}
-            >
-              {thinking}
-            </MessageResponse>
+            <div>
+              <p className='mt-3 font-medium text-slate11'>
+                Model-reported thinking
+              </p>
+              <MessageResponse
+                className='mt-2 text-xs opacity-80'
+                mode={active ? 'streaming' : 'static'}
+                isAnimating={active}
+              >
+                {thinking}
+              </MessageResponse>
+            </div>
           )}
         </CollapsibleContent>
       )}

@@ -12,6 +12,11 @@ export function createTasksController({ harness }: AppDependencies) {
       res.json({ tasks })
     },
 
+    async attention(_req: Request, res: Response) {
+      res.setHeader('Cache-Control', 'no-store')
+      res.json(await taskService.getAttention(res.locals.userId))
+    },
+
     async getApproval(req: Request, res: Response) {
       res.setHeader('Cache-Control', 'no-store')
       const approval = await taskService.getApproval(

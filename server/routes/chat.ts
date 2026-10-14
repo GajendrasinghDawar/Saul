@@ -13,6 +13,10 @@ export function createChatRouter(
   // Chat: Submit message to a conversation
   router.post('/chat', csrf, limiter, controller.submitMessage)
 
+  // Read persisted history only; never admit or resume agent work.
+  router.get('/search', controller.search)
+  router.get('/history/:conversationId/:entryId', controller.sourceMessage)
+
   // Create new conversation
   router.post('/new-thread', csrf, limiter, controller.newThread)
 

@@ -1,4 +1,4 @@
-import { Check, Copy, GitFork } from 'lucide-react'
+import { Check, Copy, GitFork, Reply } from 'lucide-react'
 import { useState } from 'react'
 import {
   Message,
@@ -9,6 +9,7 @@ import {
 } from '../../components/message'
 import { EffectCard } from '../effects/EffectCard'
 import { ActivityItem } from './ActivityItem'
+import type { AssistantPhase } from './ThinkingIndicator'
 import type { Effect } from './use-chat-session'
 
 type AssistantMessageProps = {
@@ -22,6 +23,8 @@ type AssistantMessageProps = {
   onFork?: () => void
   onApprove?: () => void
   onReject?: () => void
+  phase?: AssistantPhase
+  onReply?: () => void
 }
 
 export function AssistantMessage({
@@ -35,6 +38,8 @@ export function AssistantMessage({
   onFork,
   onApprove,
   onReject,
+  phase,
+  onReply,
 }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false)
   let displayContent = content
@@ -59,20 +64,33 @@ export function AssistantMessage({
   return (
     <Message from='assistant' className={isLast ? 'min-h-[50svh]' : undefined}>
       <MessageContent>
-        {(active || activities.length > 0 || displayThinking) && (
+        {(active ||
+          phase === 'disconnected' ||
+          isComplete ||
+          activities.length > 0 ||
+          displayThinking) && (
           <ActivityItem
             activities={activities}
             active={active}
             thinking={displayThinking}
+            phase={phase ?? (active && displayContent ? 'writing' : undefined)}
           />
         )}
         {displayContent && (
-          <MessageResponse
-            mode={active ? 'streaming' : 'static'}
-            isAnimating={active}
-          >
-            {displayContent}
-          </MessageResponse>
+          <div>
+            <MessageResponse
+              mode={active ? 'streaming' : 'static'}
+              isAnimating={active}
+            >
+              {displayContent}
+            </MessageResponse>
+            {active && (
+              <span
+                aria-hidden='true'
+                className='mt-1 inline-block h-4 w-0.5 bg-jade9 motion-safe:animate-pulse'
+              />
+            )}
+          </div>
         )}
         {effects.length > 0 && (
           <div className='mt-4 space-y-3'>
@@ -96,6 +114,11 @@ export function AssistantMessage({
           >
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </MessageAction>
+          {onReply && (
+            <MessageAction tooltip='Reply to response' onClick={onReply}>
+              <Reply size={15} />
+            </MessageAction>
+          )}
           {onFork && (
             <MessageAction
               tooltip='Fork conversation from here'

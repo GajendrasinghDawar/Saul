@@ -113,7 +113,7 @@ export function createApp(dependencies: AppDependencies) {
     '/api',
     createChatRouter(dependencies, doubleCsrfProtection, apiLimiter)
   )
-  app.use('/api/tasks', createTasksRouter(dependencies))
+  app.use('/api/tasks', doubleCsrfProtection, createTasksRouter(dependencies))
   app.use('/api/conversations', createConversationsRouter(dependencies))
 
   // Serve static files in production

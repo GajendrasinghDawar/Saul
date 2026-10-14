@@ -1,12 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
-import { type Attachment, fetchWithCsrf, responseError } from '../../lib/api'
-import {
-  type ChatView,
-  projectChatView,
-  reconcilePendingMessages,
-} from './chat-view'
-import type { SendAttempt } from './send-attempt'
+import { useEffect, useState } from 'react'
+import { type Attachment, fetchWithCsrf } from '../../lib/api'
+import type { ComposerReply } from './Composer'
+import { useChatOutbox } from './chat-drafts'
+import { type ChatView, projectChatView } from './chat-view'
+import type { BusyPolicy } from './outbox'
+import type { AssistantPhase } from './ThinkingIndicator'
 
 export type Message = {
   role: 'user' | 'assistant'
@@ -20,8 +18,12 @@ export type Message = {
   activities?: string[]
   effects?: Effect[]
   isComplete?: boolean
+  reply?: ComposerReply
+  phase?: AssistantPhase
+  entryIds?: string[]
+  replyEntryId?: string
+  replyText?: string
 }
-
 export type Effect = {
   id: string
   summary?: string
@@ -40,201 +42,154 @@ export type Effect = {
     | 'interrupted'
     | 'unknown'
 }
-
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
-
 type StreamEvent = {
   type?: 'init' | 'update'
   view?: ChatView
+  conversationId?: string
 }
 
-export function useChatSession(sessionId: string, attempt: SendAttempt) {
-  const [messages, setMessages] = useState<Message[]>([])
+export function useChatSession(sessionId: string) {
+  const { outbox, items, paused, main } = useChatOutbox()
+  const [canonicalMessages, setCanonicalMessages] = useState<Message[]>([])
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
-  const [isCancelling, setIsCancelling] = useState(false)
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>('connecting')
-  const pendingMessagesRef = useRef<Map<string, Message>>(new Map())
-  const seenEntriesRef = useRef<Set<string>>(new Set())
-  const initializedRef = useRef(false)
-  const canonicalMessagesRef = useRef<Message[]>([])
-
   useEffect(() => {
     setConnectionStatus('connecting')
-    setMessages([])
-    pendingMessagesRef.current.clear()
-    seenEntriesRef.current.clear()
-    initializedRef.current = false
-
-    const processView = (view: ChatView) => {
-      const projection = projectChatView(view)
-      canonicalMessagesRef.current = projection.messages
-
-      reconcilePendingMessages(
-        projection.messages,
-        pendingMessagesRef.current,
-        seenEntriesRef.current
-      )
-      initializedRef.current = true
-
-      setActiveRunId(projection.activeRunId)
-      if (
-        !projection.isBusy &&
-        window.sessionStorage.getItem(`busy-${sessionId}`)
-      ) {
-        window.sessionStorage.removeItem(`busy-${sessionId}`)
-        window.dispatchEvent(new CustomEvent('chat-updated'))
-      } else if (projection.isBusy) {
-        window.sessionStorage.setItem(`busy-${sessionId}`, 'true')
-      }
-
-      setMessages([
-        ...projection.messages,
-        ...pendingMessagesRef.current.values(),
-      ])
-    }
-
-    const es = new EventSource(
-      `/api/stream?conversationId=${sessionId === 'main' ? '' : sessionId}`
-    )
-
-    es.onopen = () => setConnectionStatus('connected')
-    es.onerror = () => setConnectionStatus('disconnected')
-    es.onmessage = event => {
+    setCanonicalMessages([])
+    setActiveRunId(null)
+    let es: EventSource | undefined
+    const receive = (event: MessageEvent<string>) => {
       const data = JSON.parse(event.data) as StreamEvent
-      if ((data.type === 'init' || data.type === 'update') && data.view) {
-        processView(data.view)
-      }
+      if ((data.type !== 'init' && data.type !== 'update') || !data.view) return
+      setConnectionStatus('connected')
+      if (sessionId === 'main' && data.conversationId)
+        void outbox.rememberMain(String(data.conversationId))
+      const projection = projectChatView(data.view)
+      setCanonicalMessages(projection.messages)
+      setActiveRunId(projection.activeRunId)
+      if (!projection.isBusy && sessionStorage.getItem(`busy-${sessionId}`)) {
+        sessionStorage.removeItem(`busy-${sessionId}`)
+        window.dispatchEvent(new CustomEvent('chat-updated'))
+      } else if (projection.isBusy)
+        sessionStorage.setItem(`busy-${sessionId}`, 'true')
     }
+    const connect = () => {
+      es?.close()
+      setConnectionStatus(navigator.onLine ? 'connecting' : 'disconnected')
+      if (!navigator.onLine) return
+      es = new EventSource(
+        `/api/stream?conversationId=${sessionId === 'main' ? '' : encodeURIComponent(sessionId)}`
+      )
+      es.onerror = () => setConnectionStatus('disconnected')
+      es.onmessage = receive
+    }
+    const offline = () => {
+      es?.close()
+      setConnectionStatus('disconnected')
+    }
+    window.addEventListener('offline', offline)
+    window.addEventListener('online', connect)
+    connect()
+    return () => {
+      es?.close()
+      window.removeEventListener('offline', offline)
+      window.removeEventListener('online', connect)
+    }
+  }, [sessionId, outbox])
 
-    return () => es.close()
-  }, [sessionId])
+  useEffect(() => {
+    const ids = canonicalMessages.flatMap(
+      message => message.entryIds ?? [message.requestId]
+    )
+    if (
+      items.some(
+        item => item.admittedEntryId && ids.includes(item.admittedEntryId)
+      )
+    )
+      void outbox.acknowledge(ids)
+  }, [canonicalMessages, items, outbox])
 
+  const outboxItems = items.filter(
+    item => item.conversationId === (sessionId === 'main' ? main : sessionId)
+  )
+  const messages: Message[] = [
+    ...canonicalMessages,
+    ...outboxItems
+      .filter(
+        item =>
+          !item.admittedEntryId ||
+          !canonicalMessages.some(
+            message => message.requestId === item.admittedEntryId
+          )
+      )
+      .map(
+        (item): Message => ({
+          role: 'user',
+          content: item.message,
+          attachments: item.attachments,
+          requestId: item.admittedEntryId ?? item.requestId,
+          idempotencyKey: item.requestId,
+          admittedEntryId: item.admittedEntryId,
+          reply: item.replyToEntryId
+            ? {
+                entryId: item.replyToEntryId,
+                role: 'message',
+                text: 'Open referenced message',
+              }
+            : undefined,
+          status:
+            item.status === 'delivered'
+              ? 'delivered'
+              : item.status === 'failed' || item.status === 'unknown'
+                ? 'failed'
+                : 'sending',
+        })
+      ),
+  ]
   const submitMessage = async (
     text: string,
     attachments: Attachment[] = [],
-    whenBusy?: 'followUp' | 'steer' | 'reject'
+    whenBusy?: BusyPolicy,
+    replyToEntryId?: string
   ) => {
-    if (
-      (activeRunId && whenBusy !== 'steer') ||
-      connectionStatus !== 'connected' ||
-      !initializedRef.current ||
-      (!text.trim() && attachments.length === 0)
-    ) {
-      return false
-    }
-
-    const idempotencyKey = attempt.requestId(
-      text,
-      attachments.map(file => file.id),
-      whenBusy
-    )
-    const pendingMessage: Message = {
-      role: 'user',
-      content: text,
-      attachments,
-      requestId: idempotencyKey,
-      idempotencyKey,
-      status: 'sending',
-    }
-
-    pendingMessagesRef.current.set(idempotencyKey, pendingMessage)
-    setMessages(current => [
-      ...current.filter(message => message.requestId !== idempotencyKey),
-      pendingMessage,
-    ])
-
     try {
-      const response = await fetchWithCsrf('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestId: idempotencyKey,
-          conversationId: sessionId === 'main' ? undefined : sessionId,
-          message: text,
-          attachmentIds: attachments.map(file => file.id),
-          whenBusy,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(await responseError(response))
-      }
-      const data = (await response.json()) as { result: { entry?: number } }
-      const admittedEntryId =
-        data.result.entry === undefined ? undefined : String(data.result.entry)
-      if (
-        admittedEntryId &&
-        !canonicalMessagesRef.current.some(
-          message => message.requestId === admittedEntryId
-        )
-      ) {
-        pendingMessagesRef.current.set(idempotencyKey, {
-          ...pendingMessage,
-          requestId: admittedEntryId,
-          admittedEntryId,
-          status: 'delivered',
-        })
-      } else {
-        pendingMessagesRef.current.delete(idempotencyKey)
-      }
-      setMessages([
-        ...canonicalMessagesRef.current,
-        ...pendingMessagesRef.current.values(),
-      ])
-      attempt.confirmed(idempotencyKey)
-      return true
-    } catch (error) {
-      // Text alone cannot confirm which same-text request was delivered.
-      console.error('Failed to send message', error)
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Failed to send message. Please try again.'
+      return await outbox.enqueue(
+        sessionId,
+        text,
+        attachments,
+        whenBusy,
+        replyToEntryId
       )
-
-      const pending = pendingMessagesRef.current.get(idempotencyKey)
-      if (pending) {
-        const failed: Message = { ...pending, status: 'failed' }
-        pendingMessagesRef.current.set(idempotencyKey, failed)
-        setMessages(current =>
-          current.map(message =>
-            message.requestId === idempotencyKey ? failed : message
-          )
-        )
-      }
+    } catch (error) {
+      console.error('Could not persist send', error)
       return false
     }
   }
-
-  const stop = async () => {
-    setIsCancelling(true)
-    // TODO: implement interrupt in pi-durable if needed
-    setTimeout(() => setIsCancelling(false), 2000)
-  }
-
   const forkMessage = async (messageId: string) => {
-    try {
-      const response = await fetchWithCsrf(`/api/fork/${messageId}`, {
-        method: 'POST',
-      })
-      if (!response.ok) throw new Error('Failed to fork conversation')
-      const data = (await response.json()) as { newConversationId: string }
-      window.dispatchEvent(new CustomEvent('chat-updated'))
-      return data.newConversationId
-    } catch (error) {
-      console.error('Fork failed', error)
-      throw error
-    }
+    const response = await fetchWithCsrf(`/api/fork/${messageId}`, {
+      method: 'POST',
+    })
+    if (!response.ok) throw new Error('Failed to fork conversation')
+    const data = (await response.json()) as { newConversationId: string }
+    window.dispatchEvent(new CustomEvent('chat-updated'))
+    return data.newConversationId
   }
-
   return {
     messages,
     activeRunId,
-    isCancelling,
     connectionStatus,
     submitMessage,
-    stop,
     forkMessage,
+    resolvedConversationId: sessionId === 'main' ? main : sessionId,
+    canQueue:
+      Boolean(navigator.locks) &&
+      !paused &&
+      (sessionId !== 'main' || Boolean(main)),
+    outboxItems,
+    outboxStatus: paused ? ('paused' as const) : ('ready' as const),
+    retryOutboxItem: (requestId: string) => outbox.retry(requestId),
+    removeOutboxItem: (requestId: string) => outbox.remove(requestId),
   }
 }

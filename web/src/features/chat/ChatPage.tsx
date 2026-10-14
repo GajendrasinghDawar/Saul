@@ -1,11 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import {
-  type ChangeEvent,
-  type FormEvent,
-  useEffect,
-  useRef,
-  useState,
-} from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   type ArtifactCapabilities,
@@ -15,20 +9,40 @@ import {
 } from '../../lib/api'
 import { Composer } from './Composer'
 import { useChatDraft } from './chat-drafts'
+import { HistorySource } from './HistorySource'
 import { MessageTimeline } from './MessageTimeline'
 import { useChatSession } from './use-chat-session'
 import { useScrollToBottom } from './useScrollToBottom'
 
-export function ChatPage({ sessionId }: { sessionId: string }) {
-  return <SessionChatPage key={sessionId} sessionId={sessionId} />
+export function ChatPage({
+  sessionId,
+  targetEntryId,
+}: {
+  sessionId: string
+  targetEntryId?: string
+}) {
+  return (
+    <SessionChatPage
+      key={sessionId}
+      sessionId={sessionId}
+      targetEntryId={targetEntryId}
+    />
+  )
 }
 
-function SessionChatPage({ sessionId }: { sessionId: string }) {
+function SessionChatPage({
+  sessionId,
+  targetEntryId,
+}: {
+  sessionId: string
+  targetEntryId?: string
+}) {
   const {
     draft: draftState,
     text: draft,
     files: stagedFiles,
     sending,
+    reply,
   } = useChatDraft(sessionId)
   const setDraft = draftState.setText
   const setStagedFiles = draftState.setFiles
@@ -36,11 +50,15 @@ function SessionChatPage({ sessionId }: { sessionId: string }) {
     messages,
     submitMessage,
     activeRunId,
-    isCancelling,
     connectionStatus,
-    stop,
     forkMessage,
-  } = useChatSession(sessionId, draftState.attempt)
+    canQueue,
+    outboxItems,
+    outboxStatus,
+    retryOutboxItem,
+    removeOutboxItem,
+    resolvedConversationId,
+  } = useChatSession(sessionId)
   const [capabilities, setCapabilities] = useState<ArtifactCapabilities | null>(
     null
   )
@@ -75,10 +93,8 @@ function SessionChatPage({ sessionId }: { sessionId: string }) {
   const { containerRef, isAtBottom, scrollToBottom } =
     useScrollToBottom<HTMLDivElement>([messages], !!activeRunId)
 
-  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files?.length) return
-    const selected = Array.from(event.target.files)
-    event.target.value = ''
+  const handleFileChange = async (selected: File[]) => {
+    if (!selected.length) return
     if (draftState.snapshot().sending || !capabilities?.enabled) return
     const maxFiles = Math.min(4, capabilities.maxFilesPerMessage)
     if (draftState.snapshot().files.length + selected.length > maxFiles) {
@@ -157,10 +173,15 @@ function SessionChatPage({ sessionId }: { sessionId: string }) {
     const sent = await submitMessage(
       draft.trim(),
       attachments,
-      activeRunId ? 'steer' : undefined
+      'followUp',
+      submitted.reply?.entryId
     )
     draftState.setSending(false)
     if (sent) draftState.delivered(submitted.revision, submitted.files)
+    else
+      toast.error(
+        'Could not save this message on the device. Keep your draft and try again.'
+      )
     setTimeout(scrollToBottom, 50)
   }
 
@@ -177,6 +198,19 @@ function SessionChatPage({ sessionId }: { sessionId: string }) {
 
   return (
     <div className='flex size-full min-h-0 flex-col'>
+      {targetEntryId &&
+        resolvedConversationId &&
+        connectionStatus === 'connected' &&
+        !messages.some(message =>
+          (message.entryIds ?? [message.requestId]).includes(targetEntryId)
+        ) && (
+          <HistorySource
+            key={`${resolvedConversationId}:${targetEntryId}`}
+            conversationId={resolvedConversationId}
+            entryId={targetEntryId}
+            onReply={draftState.setReply}
+          />
+        )}
       <MessageTimeline
         messages={messages}
         activeRunId={activeRunId}
@@ -185,7 +219,75 @@ function SessionChatPage({ sessionId }: { sessionId: string }) {
         scrollToBottom={scrollToBottom}
         onSuggestion={setDraft}
         onFork={handleFork}
+        onReply={message => {
+          draftState.setReply({
+            entryId: message.requestId,
+            role: message.role,
+            text: message.content.slice(0, 2000),
+          })
+          document
+            .querySelector<HTMLTextAreaElement>(
+              'textarea[aria-label="Message"]'
+            )
+            ?.focus()
+        }}
+        targetEntryId={targetEntryId}
+        connected={connectionStatus === 'connected'}
       />
+      {outboxItems.some(item => item.status !== 'delivered') && (
+        <section
+          aria-label='Message outbox'
+          className='mx-auto max-h-40 w-full max-w-3xl overflow-y-auto px-4 py-2 text-xs text-slate11'
+        >
+          <p className='mb-1 font-medium'>
+            Saved on this device ·{' '}
+            {outboxStatus === 'paused'
+              ? 'Sign in again to resume sending'
+              : 'Messages send in order when connected'}
+          </p>
+          {outboxItems
+            .filter(item => item.status !== 'delivered')
+            .map(item => (
+              <div
+                key={item.requestId}
+                className='flex items-center justify-between gap-2 border-t border-slate5 py-2'
+              >
+                <span className='min-w-0 truncate'>
+                  {item.message || item.attachments[0]?.name} —{' '}
+                  {item.status === 'queued'
+                    ? 'Waiting to send'
+                    : item.error || 'Confirming delivery'}
+                </span>
+                {item.status === 'failed' && (
+                  <button
+                    type='button'
+                    className='shrink-0 rounded px-2 py-2 text-jade11'
+                    onClick={() => void retryOutboxItem(item.requestId)}
+                  >
+                    Retry safely
+                  </button>
+                )}
+                {(item.status === 'queued' || item.status === 'failed') && (
+                  <button
+                    type='button'
+                    className='shrink-0 rounded px-2 py-2'
+                    onClick={() => {
+                      if (
+                        item.attempts === 0 ||
+                        window.confirm(
+                          'This message may already be on the server. Remove only the local record and stop retrying?'
+                        )
+                      )
+                        void removeOutboxItem(item.requestId)
+                    }}
+                  >
+                    {item.attempts === 0 ? 'Remove' : 'Forget locally'}
+                  </button>
+                )}
+              </div>
+            ))}
+        </section>
+      )}
       <Composer
         draft={draft}
         setDraft={setDraft}
@@ -194,16 +296,17 @@ function SessionChatPage({ sessionId }: { sessionId: string }) {
         capabilities={capabilities}
         attachmentNotice={attachmentNotice}
         fileInputRef={fileInputRef}
-        onFiles={event => void handleFileChange(event)}
+        onFilesSelected={files => void handleFileChange(files)}
         onRemoveFile={file => {
           if (draftState.snapshot().sending) return
           setStagedFiles(current => current.filter(item => item.file !== file))
         }}
         onSubmit={event => void handleSubmit(event)}
-        onStop={() => void stop()}
         activeRunId={activeRunId}
-        isCancelling={isCancelling}
         connectionStatus={connectionStatus}
+        canQueue={canQueue}
+        reply={reply}
+        onRemoveReply={() => draftState.setReply(null)}
       />
     </div>
   )
