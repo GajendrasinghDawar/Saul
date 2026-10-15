@@ -10,21 +10,18 @@ import { isConversationOwner } from '../agent/data.ts'
 import type { AppDependencies } from '../app.ts'
 import { db } from '../db/index.ts'
 import { userConversations } from '../db/schema.ts'
+import { AiError } from '../services/ai.ts'
 import { AttachmentError } from '../services/attachments.ts'
 import { ChatService } from '../services/chat.ts'
 import { resolveReply, searchHistory } from '../services/chat-history.ts'
 
 export function createChatController({
   harness,
-  modelConfig,
   attachments,
   models,
+  ai,
 }: AppDependencies) {
-  const chatService = new ChatService(
-    harness,
-    modelConfig.providerName,
-    modelConfig.modelId
-  )
+  const chatService = new ChatService(harness, ai.newConversationModel)
 
   return {
     async submitMessage(req: Request, res: Response) {
@@ -80,7 +77,14 @@ export function createChatController({
 
       let targetConvId = conversationId as ConversationId | undefined
       if (!targetConvId) {
-        targetConvId = await chatService.getOrCreateMainConversationId(userId)
+        try {
+          targetConvId = await chatService.getOrCreateMainConversationId(userId)
+        } catch {
+          return res.status(409).json({
+            error:
+              'No default AI model is available. Ask an administrator to configure one.',
+          })
+        }
       } else {
         targetConvId = Number(targetConvId) as ConversationId
         if (!(await isConversationOwner(String(targetConvId), userId))) {
@@ -124,10 +128,15 @@ export function createChatController({
         const model = ref
           ? models.getModel(ref.provider, ref.modelId)
           : undefined
+        if (!model)
+          return res.status(409).json({
+            error:
+              'This conversation model is unavailable. Ask an administrator to restore the provider and model.',
+          })
         const files = await attachments.prepare(
           String(userId),
           attachmentIds,
-          Boolean(model?.input.includes('image'))
+          model.input.includes('image')
         )
         const settled = await chatService.submitMessage(
           targetConvId,
@@ -141,6 +150,8 @@ export function createChatController({
           return res.status(404).json({ error: 'Conversation not found' })
         res.json({ success: true, result: settled })
       } catch (error) {
+        if (error instanceof AiError)
+          return res.status(409).json({ error: error.message })
         if (error instanceof AttachmentError)
           return res.status(error.status).json({ error: error.message })
         if (error instanceof ConversationBusy)
@@ -216,8 +227,15 @@ export function createChatController({
 
     async newThread(_req: Request, res: Response) {
       const userId = res.locals.userId
-      const conversationId = await chatService.createConversation(userId)
-      res.json({ success: true, conversationId })
+      try {
+        const conversationId = await chatService.createConversation(userId)
+        res.json({ success: true, conversationId })
+      } catch {
+        res.status(409).json({
+          error:
+            'No default AI model is available. Ask an administrator to configure one.',
+        })
+      }
     },
 
     async forkThread(req: Request, res: Response) {
@@ -246,7 +264,14 @@ export function createChatController({
         | undefined
 
       if (!targetConvId) {
-        targetConvId = await chatService.getOrCreateMainConversationId(userId)
+        try {
+          targetConvId = await chatService.getOrCreateMainConversationId(userId)
+        } catch {
+          return res.status(409).json({
+            error:
+              'No default AI model is available. Ask an administrator to configure one.',
+          })
+        }
       } else {
         targetConvId = Number(targetConvId) as ConversationId
         if (!(await isConversationOwner(String(targetConvId), userId))) {

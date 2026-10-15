@@ -142,8 +142,7 @@ test('startup creates the full app schema locally and preserves data across rest
       locked.close()
     }
     const invalidSettings = run(startup, directory)
-    assert.equal(invalidSettings.status, 1)
-    assert.match(invalidSettings.stderr, /encryption key and stored format/)
+    assert.equal(invalidSettings.status, 0)
     assert.doesNotMatch(
       invalidSettings.stderr,
       /invalid-ciphertext|fake-app-token/
@@ -153,7 +152,7 @@ test('startup creates the full app schema locally and preserves data across rest
   }
 })
 
-test('email and S3 use environment configuration, ignore old overrides, and reject UI mutations', async () => {
+test('email and S3 use environment configuration and ignore old overrides', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'saul-deployment-settings-'))
   try {
     await writeFile(
@@ -171,11 +170,9 @@ test('email and S3 use environment configuration, ignore old overrides, and reje
     const result = run(
       `
 import assert from 'node:assert/strict'
-import express from '${new URL('../../node_modules/express/index.js', import.meta.url).href}'
 import { db, migrateAppDatabase } from '${new URL('../db/index.ts', import.meta.url).href}'
 import { secrets } from '${new URL('../db/schema.ts', import.meta.url).href}'
-import { getSecret, loadSecrets } from '${new URL('../secretsManager.ts', import.meta.url).href}'
-import { createSecretsRouter } from '${new URL('../routes/secrets.ts', import.meta.url).href}'
+import { getSecret } from '${new URL('../secretsManager.ts', import.meta.url).href}'
 import { setupAttachments } from '${new URL('../setup/attachments.ts', import.meta.url).href}'
 await migrateAppDatabase()
 const expected = {
@@ -188,46 +185,16 @@ const expected = {
   S3_SECRET_ACCESS_KEY: 'env-secret-key',
 }
 // Obsolete ciphertext must neither override the environment nor require its
-// old encryption key. Rows are retained, including after rejected deletion.
+// old encryption key. Rows are retained.
 await db.insert(secrets).values(Object.keys(expected).map(name => ({
   name, value: 'old-invalid-ciphertext', kind: 'secret', updatedAt: new Date(),
 })))
-await loadSecrets()
 for (const [name, value] of Object.entries(expected)) assert.equal(getSecret(name), value)
 assert.equal(setupAttachments().capabilities(false).enabled, true)
-const app = express()
-app.use(express.json())
-app.use('/api/secrets', createSecretsRouter({api: {getSession: async () => ({user: {id: 'admin', role: 'admin'}})}}))
-const server = app.listen(0, '127.0.0.1')
-try {
-  await new Promise(resolve => server.once('listening', resolve))
-  const url = 'http://127.0.0.1:' + server.address().port + '/api/secrets'
-  const headers = {authorization: 'Bearer fixture', 'content-type': 'application/json'}
-  const listed = await fetch(url, {headers}).then(response => response.json())
-  assert.deepEqual(listed.map(row => row.name).sort(), [
-    'AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_BASE_URL', 'AZURE_OPENAI_INPUT', 'AZURE_OPENAI_MODEL',
-  ])
-  for (const name of Object.keys(expected)) {
-    assert.equal((await fetch(url, {method: 'POST', headers, body: JSON.stringify({name, value: 'replacement'})})).status, 400)
-    assert.equal((await fetch(url + '/' + name, {method: 'DELETE', headers, body: '{}'})).status, 400)
-    assert.equal(getSecret(name), expected[name])
-  }
-  assert.equal((await db.select().from(secrets)).length, 7)
-  // The existing encrypted AI override path must still work.
-  process.env.SAUL_SECRETS_KEY = 'ab'.repeat(32)
-  process.env.AZURE_OPENAI_API_KEY = 'env-ai-key'
-  const saved = await fetch(url, {method: 'POST', headers, body: JSON.stringify({name: 'AZURE_OPENAI_API_KEY', value: 'ui-ai-key'})})
-  assert.equal(saved.status, 200)
-  await loadSecrets()
-  assert.equal(getSecret('AZURE_OPENAI_API_KEY'), 'ui-ai-key')
-} finally {
-  server.closeAllConnections()
-  await new Promise(resolve => server.close(resolve))
-}
+assert.equal((await db.select().from(secrets)).length, 7)
 // Missing deployment configuration must not revive obsolete UI overrides.
 delete process.env.S3_SECRET_ACCESS_KEY
 delete process.env.RESEND_API_KEY
-await loadSecrets()
 assert.equal(getSecret('RESEND_API_KEY'), '')
 assert.equal(setupAttachments().capabilities(false).enabled, false)
 `,

@@ -5,7 +5,6 @@ import type {
   TaskRecord,
   Tx,
 } from '@earendil-works/pi-durable'
-import { getSecret, settingDefinitions } from '../secretsManager.ts'
 
 export type AttentionItem = {
   id: string
@@ -34,10 +33,6 @@ export type AttentionResponse = {
 // checkpoints, provider errors or model payloads wholesale.
 export function attentionText(value: string): string {
   let text = value
-  for (const [name, definition] of Object.entries(settingDefinitions)) {
-    const secret = definition.kind === 'secret' ? getSecret(name) : ''
-    if (secret) text = text.replaceAll(secret, '[redacted]')
-  }
   for (const [name, secret] of Object.entries(process.env)) {
     if (secret && /KEY|TOKEN|SECRET|PASSWORD/i.test(name))
       text = text.replaceAll(secret, '[redacted]')

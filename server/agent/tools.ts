@@ -2,6 +2,7 @@ import { Type } from '@earendil-works/pi-ai'
 import {
   defineExtension,
   defineTool,
+  GenerationTask,
   hook,
   section,
   ToolTask,
@@ -10,6 +11,7 @@ import { sql } from 'drizzle-orm'
 import { Resend } from 'resend'
 import { db } from '../db/index.ts'
 import { todos } from '../db/schema.ts'
+import { errorCategory, logger } from '../logger.ts'
 import { getSecret } from '../secretsManager.ts'
 import {
   DEFAULT_EMAIL_FROM,
@@ -117,7 +119,39 @@ export const LaliExtension = defineExtension({
   ],
   tools: [saveTodoTool, clearTodosTool, sendDigestEmailTool],
   hooks: [
+    hook(GenerationTask, {
+      beforeRequest: (_request, api) => {
+        logger.info('agent.request', {
+          conversationId: api.conversationId,
+          taskId: api.taskId,
+        })
+      },
+      afterResponse: (message, api) => {
+        const fields = {
+          conversationId: api.conversationId,
+          taskId: api.taskId,
+          provider: message.provider,
+          model: message.model,
+          stopReason: message.stopReason,
+        }
+        if (message.stopReason === 'error') {
+          logger.error('agent.response_failed', {
+            ...fields,
+            category: errorCategory(message.errorMessage),
+          })
+        } else {
+          logger.info('agent.response', fields)
+        }
+      },
+    }),
     hook(ToolTask, {
+      afterTool: (_call, result, api) => {
+        logger[result.isError ? 'warn' : 'info']('agent.tool_result', {
+          conversationId: api.conversationId,
+          taskId: api.taskId,
+          failed: Boolean(result.isError),
+        })
+      },
       // beforeTool intercepts the tool execution. It's useful for injecting approval flows.
       beforeTool: async (call, api, ctx) => {
         if (call.name === 'clear_todos') {

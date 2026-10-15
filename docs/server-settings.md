@@ -1,113 +1,135 @@
-# Server-managed service settings
+# Administrator AI configuration
 
-Only administrators can use `/api/secrets`. Supported settings include
-`AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_BASE_URL`, `AZURE_OPENAI_MODEL`, and
-`AZURE_OPENAI_INPUT`. Email and attachment storage are deployment configuration,
-not UI settings. All stored AI overrides use
-AES-256-GCM with a random nonce and authentication bound to the setting name.
-Decrypted values stay in server memory; provider keys are not copied to
-`process.env`. This does not protect against a compromised running server.
+Settings manages Pi AI providers, protected credentials, custom endpoints and
+the default model. Saul passes the same Pi AI `Models` collection to Pi Durable;
+there is no separate provider protocol adapter or coding-agent configuration
+loader. The installed Pi AI catalog supplies built-in chat models and their
+capabilities, including image input and reasoning.
 
-## Bootstrap
+## Setup
 
-Supply `SAUL_SECRETS_KEY` externally as exactly 64 hexadecimal characters (32
-random bytes). Generate once with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.
-Keep it in a deployment secret manager, not in this settings UI or the database.
-Back it up separately from the database. Losing it makes stored overrides
-unrecoverable. There is no automatic key rotation. All override writes require
-the key, including development writes and non-secret settings.
+1. Supply the root `.env` bootstrap values described in [README](../README.md).
+   Generate `SAUL_SECRETS_KEY` once: it must contain 64 hexadecimal characters.
+   Back it up separately from the databases and reuse it after moving servers.
+2. Run `npm run dev`. Development uses isolated local app and Pi databases,
+   never the configured cloud databases. Startup applies checked-in migrations.
+3. Sign in as an administrator and open Settings. On a fresh installation, the
+   first registered account becomes the administrator.
+4. Choose a provider and complete one of its native login methods. API keys,
+   account authorization links, device codes and manual callbacks are presented
+   only when the installed Pi provider offers them. Amazon Bedrock and other
+   ambient-only providers use their native server credential chain.
+5. Select a default model, then create a new chat. Credentials being configured
+   does not prove model permissions or a working network connection.
 
-Keep database location/access, server port, deployment mode, authentication URL,
-`BETTER_AUTH_SECRET`, `COOKIE_SECRET`, `CSRF_SECRET`, `RESEND_API_KEY`,
-`MY_EMAIL_ADDRESS`, and all five `S3_*` values outside the UI. Set them in the
-untracked root `.env` file or injected environment variables. Restart the backend
-after changing them. See [the attachment guide](attachments.md) for S3 values.
-Only supported AI settings are loaded from the database.
-Bootstrap values must come from external configuration, not database rows.
-No users are promoted by this settings feature.
-The first account created on an empty installation becomes the administrator.
-Public registration closes after that; only an authenticated administrator can
-register additional accounts, which receive the normal user role. Signup
-requests are serialized in the single backend process. The role field is
-server-controlled; clients cannot choose it at signup or change it through
-profile updates. Existing accounts are not automatically promoted.
-The existing bootstrap file loading behavior is unchanged; do not configure
-conflicting bootstrap values in multiple places.
+For a custom compatible endpoint, choose **Custom connection**, enter a unique
+connection ID, base URL and Pi API family, then define the actual models it
+serves. Supported families are OpenAI Completions, OpenAI Responses, Anthropic
+Messages, Google Generative AI and Azure OpenAI Responses. Use HTTPS, or HTTP
+loopback for local model servers; URLs cannot contain credentials, query strings
+or fragments. API keys are entered separately through the native login prompt.
+Keyless connections use a placeholder API key because the underlying SDK still
+requires one; the endpoint itself must not require authentication.
 
-AI environment variables remain optional fallbacks. After configuring an
-override, remove its external fallback only when that is intentional: deleting
-an override reveals the fallback, rather than disabling the service.
+Use the model's real input capabilities and token limits, not guessed values.
+The **Native Pi options** JSON editor accepts `compat`, `thinkingLevelMap`,
+`inputLimits`, `promptCache` and `samplingParams` in Pi's own formats. Saul
+preserves these objects and Pi interprets them. Arbitrary credential headers,
+custom protocol implementations and automatic endpoint model discovery are not
+part of this UI. Custom model costs initially default to zero (unknown), not a
+claim that provider usage is free.
 
-Old email and S3 database rows are ignored, not decrypted or deleted. They cannot
-override environment values or be edited through `/api/secrets`. Before upgrading,
-configure the same working credentials in `.env` or deployment secrets. Values
-are not exported automatically. Without environment credentials, uploads are
-disabled; production email operations fail explicitly (development reminders
-and digests retain their existing mock behavior).
+Pi's environment credentials and native credential-file sources remain usable.
+Optionally set `SAUL_AI_PROVIDER` and `SAUL_AI_MODEL` to bootstrap a default when
+no AI configuration record exists. This requires configured provider auth.
+Existing Azure deployment environment settings are recognized too; unknown
+Azure deployment IDs default to text-only input unless
+`AZURE_OPENAI_INPUT=text,image` is set. Saved AI configuration takes precedence
+over default bootstrap variables. Restart after changing `.env`.
 
-## API
+## Persistence and scope
 
-* `GET /api/secrets`: array of `{name,kind,value,isSet,applyMode,pendingRestart}`.
-  Always lists all supported definitions. Secret values are always `null`.
-  `isSet` reflects the effective override or environment fallback. Responses are
-  `Cache-Control: no-store`.
-* `POST /api/secrets`: JSON `{name,value}`. Kind is determined by the server.
-  Empty, masked, excessively long and control-character values are rejected.
-  Model must be a deployment identifier; base
-  URL must be HTTPS without credentials, query or fragment.
-* `DELETE /api/secrets/:name`: JSON `{password}`. The current user's password is
-  verified with Better Auth's public `api.verifyPassword` before deletion.
-  Incorrect password returns 403; missing password returns 400. Passwordless
-  accounts cannot delete overrides through this API.
-* Successful mutations return `{success:true,applyMode,pendingRestart}`.
-  Errors are `{error:string}`. Unauthenticated requests return 401; signed-in
-  non-administrators return 403. There is no bulk mutation or alternate delete
-  endpoint. Fetch GET again after mutations to inspect effective fallback state.
+Native Pi credentials, custom model catalogs, default selection and the stable
+installation device ID are encrypted with AES-256-GCM in the existing app
+database `secrets` table. Each record has a random nonce and authentication bound
+to its record name. Credentials are never returned by the management API or
+copied to `process.env`. Losing the encryption key makes these records
+unrecoverable. Invalid managed ciphertext stops startup, rather than falling
+back silently. Encryption does not protect a compromised running server.
 
-Bearer requests authenticate with cookies removed; an invalid bearer token
-cannot fall back to a valid cookie. Cookie-authenticated mutations require the
-existing `/csrf-token` cookie and `x-csrf-token` request header. Settings requests
-are limited to 20 per minute per IP, including password deletion attempts.
+Configuration changes apply live. New conversations capture the current
+`{provider, modelId}`; existing conversations and forks keep their stored
+selection. If a saved model becomes unavailable, Saul reports it instead of
+changing the model automatically. A provider serving the active default cannot
+be deleted until another default is chosen. Disconnect removes the stored
+credential, but environment or native file credentials may still make it usable.
+Replacing a connection cancels pending logins. Changing its base URL or API
+family also clears stored credentials so an old key cannot be sent to a new
+endpoint. Renaming a connection or editing its model metadata preserves auth.
+Requests already in flight may finish with previous credentials/configuration.
 
-The AI key applies to new requests immediately. Already-running
-requests can finish with previous values. Model and base URL changes need a
-process restart: `pendingRestart` compares the effective value to the snapshot
-actually used by the running model configuration, including after deletion.
-The default model remains `gpt-6-luna`. Model input capabilities also need a
-restart. S3 and email configuration is never returned by this API. Unset storage
-leaves text chat usable. No restart endpoint is provided.
-This cache is single-process: restart other server instances after mutations.
+Credential updates and OAuth refresh are serialized per provider so concurrent
+requests do not refresh a rotated token twice. This storage assumes **one active
+backend process**, as does the Pi harness; it is not a multi-instance credential lock.
+Custom providers and their native credentials are restored every server boot.
+AI configuration lives in the app database; conversation model references live
+in Pi storage. Back up both databases and the encryption key together.
 
-## Development setup
+The old `/api/secrets` API is removed. Old Azure, S3 and email rows remain
+untouched but are ignored. Reconnect AI providers through Settings or supply
+their environment credentials. Put Resend and S3 values in `.env` before an
+upgrade if they were previously configured only in the UI. No database reset,
+credential export or automatic legacy conversion runs.
 
-Start with an empty settings table, supply the bootstrap values, and enter
-AI settings through the UI. Supply email and storage configuration in `.env`.
-Old development AI settings are not supported or converted. If you have old
-plaintext AI rows, reset the development settings table and enter those values
-again; there is no data-preservation cutover.
-Resetting settings does not require deleting chats or accounts. No reset runs
-automatically.
+Keep `RESEND_API_KEY`, `MY_EMAIL_ADDRESS`, S3 configuration, database URLs/tokens,
+signing keys, server port and deployment mode outside Settings. Android is not
+updated by this feature and its previous raw-settings UI is not compatible with
+the removed API.
 
-Supported AI rows must use the current encrypted format. A missing or wrong key,
-invalid format, or damaged ciphertext stops startup instead of silently using
-an external fallback. This protects current data; it is not legacy support.
+## API and security
 
-## Local verification and release limits
+All `/api/ai` endpoints require a fresh administrator session. Invalid bearer
+credentials cannot fall back to cookies. Cookie-authenticated mutations require
+the `/csrf-token` cookie and `x-csrf-token` header. Responses use `no-store`;
+errors contain safe messages, not provider responses or credentials. Mutations
+are limited to 30 per minute per IP; login polling is excluded from this limit.
 
-The built web client was checked against the real settings routes and Better
-Auth with a disposable account and separate databases. The checks covered
-unauthenticated access, invalid bearer with a valid cookie, missing browser
-CSRF, protected replacement, draft cancellation, password-verified deletion,
-external fallback after deletion, and pending restart status. The stored model
-override was also confirmed to contain an encrypted envelope, not plaintext.
+- `GET /api/ai`: default model, provider metadata, configured credential status,
+  offered native login methods and custom API families.
+- `GET /api/ai/providers/:id/models`: native chat model catalog without headers.
+- `PUT /api/ai/default`: `{provider, modelId}`; registered model and configured
+  auth required.
+- `PUT /api/ai/providers/:id`: custom `{name, baseUrl, api, keyless, models}`;
+  built-in provider IDs cannot be replaced. Models use Pi's native fields.
+- `DELETE /api/ai/providers/:id`: delete a custom connection and its credential.
+- `DELETE /api/ai/providers/:id/credential`: native logout.
+- `POST /api/ai/providers/:id/login`: `{method: "api_key" | "oauth"}`.
+- `GET /api/ai/logins/:id`: state, native events and pending prompt, without
+  submitted answers. Sessions belong to the administrator who created them.
+- `POST /api/ai/logins/:id/answer`: `{promptId, value}` for that pending prompt.
+- `DELETE /api/ai/logins/:id`: cancel a pending login.
 
-Backend type checking, web build and lint, Android build and lint, and all 24
-existing Android unit tests passed. Android settings visuals were inspected in
-the production app shell using sanitized state fixtures. These fixtures do not
-prove Android-to-server settings delivery. No real provider or email request,
-production deployment, or production data migration was performed.
+Login sessions expire after ten minutes and are cancelled on navigation where
+possible. UI drafts stay in component memory, not browser storage. Some OAuth
+flows start a **localhost callback on the server**, which is not the browser's
+localhost when Saul runs on a VPS. Use Pi's manual code/URL prompt where offered;
+otherwise the login must be completed on the server host. This UI does not
+implement a new public OAuth callback proxy.
 
-The existing SQL migrations omit the declared `user.role` column and
-`deviceCode` table. Local browser verification repaired only the disposable
-fixture's role column. A fresh installation is not release-ready until those
-migrations and administrator provisioning are verified.
+## Local verification
+
+Run from the repository root:
+
+```powershell
+node --test server/test/*.test.ts web/test/*.test.ts
+npx tsc --noEmit
+npm run build --prefix web
+```
+
+The deterministic AI test uses disposable local databases and a local
+OpenAI-compatible endpoint. It checks native generation, reboot persistence,
+encrypted credentials, serialized OAuth refresh, admin/CSRF boundaries, login
+cancellation and new-versus-existing conversation defaults. It does not exercise
+real account authorization, model access, remote database recovery or production
+deployment. Use a disposable installation for manual credential/default tests;
+never replace working production credentials just to verify UI controls.

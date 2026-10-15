@@ -65,7 +65,10 @@ function SessionChatPage({
   )
   useEffect(() => {
     let mounted = true
-    void getArtifactCapabilities()
+    setCapabilities(null)
+    void getArtifactCapabilities(
+      resolvedConversationId ?? (sessionId === 'main' ? null : sessionId)
+    )
       .then(value => {
         if (!mounted) return
         setCapabilities(value)
@@ -86,7 +89,7 @@ function SessionChatPage({
     return () => {
       mounted = false
     }
-  }, [])
+  }, [resolvedConversationId, sessionId])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { containerRef, isAtBottom, scrollToBottom } =
     useScrollToBottom<HTMLDivElement>([messages], !!activeRunId)

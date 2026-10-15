@@ -1,411 +1,774 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Key, Save, Trash } from 'lucide-react'
+import { Check, KeyRound, Plus, Search, Settings2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchWithCsrf } from '../lib/api'
+import { CustomConnection } from '../components/ai-settings/custom-connection'
+import {
+  aiRequest,
+  type LoginState,
+  type Model,
+  providerPath,
+  type Settings,
+  SettingsError,
+  safeUrl,
+} from '../lib/ai-settings'
 
 export const Route = createFileRoute('/settings')({ component: SettingsPage })
-
-type Setting = {
-  name: string
-  kind: 'secret' | 'env'
-  value: string | null
-  isSet: boolean
-  applyMode: 'live' | 'restart'
-  pendingRestart: boolean
-}
-
-const supportedNames = new Set([
-  'AZURE_OPENAI_API_KEY',
-  'AZURE_OPENAI_BASE_URL',
-  'AZURE_OPENAI_MODEL',
-  'AZURE_OPENAI_INPUT',
-])
+const button =
+  'rounded-md border border-slate6 px-3 py-2 text-sm text-slate11 hover:bg-slate3 disabled:opacity-50'
+const input =
+  'w-full min-w-0 rounded-md border border-slate6 bg-slate1 px-3 py-2 text-sm text-slate12'
 
 function SettingsPage() {
-  const [settings, setSettings] = useState<Setting[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [denied, setDenied] = useState(false)
-  const [editing, setEditing] = useState<string | null>(null)
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [deleting, setDeleting] = useState<string | null>(null)
-  const [password, setPassword] = useState('')
+  const [data, setData] = useState<Settings | null>(null)
+  const [selected, setSelected] = useState('')
+  const [query, setQuery] = useState('')
+  const [modelQuery, setModelQuery] = useState('')
+  const [models, setModels] = useState<Model[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelsFailed, setModelsFailed] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [login, setLogin] = useState<LoginState | null>(null)
+  const [answer, setAnswer] = useState({ promptId: '', value: '' })
+  const [custom, setCustom] = useState<'new' | 'edit' | null>(null)
+  const [confirm, setConfirm] = useState<'disconnect' | 'delete' | null>(null)
   const mounted = useRef(false)
+  const loginRef = useRef<LoginState | null>(null)
+  loginRef.current = login
+  const provider = data?.providers.find(p => p.id === selected)
 
-  const responseError = useCallback((status: number, deletion = false) => {
-    if (status === 401) {
-      setDrafts({})
-      setPassword('')
-      setEditing(null)
-      setDeleting(null)
-      setSettings([])
-      setDenied(true)
-      return 'Your session has expired. Sign in again to manage settings.'
+  const fail = useCallback((cause: unknown) => {
+    if (
+      !mounted.current ||
+      (cause instanceof DOMException && cause.name === 'AbortError')
+    )
+      return
+    setError(
+      cause instanceof SettingsError
+        ? cause.message
+        : 'Request failed. Check your connection and retry.'
+    )
+    setAnswer({ promptId: '', value: '' })
+    if (
+      cause instanceof SettingsError &&
+      (cause.status === 401 || cause.status === 403)
+    ) {
+      setData(null)
+      setModels([])
+      setLogin(null)
+      setCustom(null)
+      setConfirm(null)
     }
-    if (status === 403) {
-      return deletion
-        ? 'Deletion was not authorized. Check your current password and permissions, then try again.'
-        : 'Settings access was denied. Administrator access and a valid security token are required.'
-    }
-    return deletion
-      ? 'Could not delete this setting. Check your current password and try again.'
-      : 'Could not save or load settings. Check the value and try again.'
   }, [])
-
-  const loadSettings = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/secrets')
-      if (!mounted.current) return
-      if (!res.ok) {
-        setSettings([])
-        setDenied(res.status === 401 || res.status === 403)
-        if (res.status === 401 || res.status === 403) {
-          setDrafts({})
-          setPassword('')
-          setEditing(null)
-          setDeleting(null)
-        }
-        setError(responseError(res.status))
-        return
-      }
-      const data: Setting[] = await res.json()
-      if (!mounted.current) return
-      // Never retain a secret value, even if a server incorrectly returns one.
-      setSettings(
-        data
-          .filter(s => supportedNames.has(s.name))
-          .map(s => ({
-            ...s,
-            value:
-              s.kind === 'secret' || s.name.endsWith('_API_KEY')
-                ? null
-                : s.value,
-          }))
-      )
-      setDenied(false)
-    } catch {
-      if (mounted.current)
-        setError('Could not load settings. Check your connection and retry.')
-    } finally {
-      if (mounted.current) setLoading(false)
-    }
-  }, [responseError])
-
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    const next = await aiRequest<Settings>('/', 'GET', undefined, signal)
+    if (!mounted.current || signal?.aborted) return
+    setData(next)
+    setSelected(current =>
+      next.providers.some(p => p.id === current)
+        ? current
+        : (next.defaultModel?.provider ?? next.providers[0]?.id ?? '')
+    )
+  }, [])
   useEffect(() => {
     mounted.current = true
-    void loadSettings()
-    // Drafts exist only in this component; navigating away (including sign-out)
-    // destroys them. Ignore responses arriving after unmount.
+    const controller = new AbortController()
+    void refresh(controller.signal).catch(fail)
     return () => {
       mounted.current = false
+      controller.abort()
+      const active = loginRef.current
+      if (active?.status === 'pending')
+        void aiRequest(
+          `/logins/${encodeURIComponent(active.id)}`,
+          'DELETE'
+        ).catch(() => {})
     }
-  }, [loadSettings])
-
-  const mutate = async (setting: Setting, remove: boolean) => {
-    if (busy) return
-    setBusy(true)
-    setError(null)
-    setNotice(null)
-    try {
-      const res = await fetchWithCsrf(
-        remove
-          ? `/api/secrets/${encodeURIComponent(setting.name)}`
-          : '/api/secrets',
-        {
-          method: remove ? 'DELETE' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(
-            remove
-              ? { password }
-              : { name: setting.name, value: drafts[setting.name] ?? '' }
-          ),
-        }
-      )
-      if (!mounted.current) return
-      setPassword('')
-      if (!res.ok) {
-        setError(responseError(res.status, remove))
+  }, [refresh, fail])
+  useEffect(() => {
+    if (!selected || !data) return
+    const controller = new AbortController()
+    setModels([])
+    setModelsLoading(true)
+    setModelsFailed(false)
+    void aiRequest<{ models: Model[] }>(
+      `${providerPath(selected)}/models`,
+      'GET',
+      undefined,
+      controller.signal
+    )
+      .then(result => {
+        if (!controller.signal.aborted) setModels(result.models)
+      })
+      .catch(cause => {
+        if (!controller.signal.aborted) setModelsFailed(true)
+        fail(cause)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setModelsLoading(false)
+      })
+    return () => controller.abort()
+  }, [selected, data, fail])
+  const acceptLogin = useCallback(
+    (state: LoginState) => {
+      if (!mounted.current) {
+        if (state.status === 'pending')
+          void aiRequest(
+            `/logins/${encodeURIComponent(state.id)}`,
+            'DELETE'
+          ).catch(() => {})
         return
       }
-      const result: {
-        applyMode: Setting['applyMode']
-        pendingRestart: boolean
-      } = await res.json()
-      if (!mounted.current) return
-      setDrafts(current => {
-        const next = { ...current }
-        delete next[setting.name]
-        return next
-      })
-      setEditing(null)
-      setDeleting(null)
-      setNotice(
-        `${setting.name} ${remove ? 'override removed' : 'saved'}. ${result.pendingRestart ? 'Restart required through your deployment or administrator.' : result.applyMode === 'live' ? 'Active now.' : 'No restart pending.'}`
+      if (
+        loginRef.current?.prompt?.id !== state.prompt?.id ||
+        state.status !== 'pending'
       )
-      // Removing an override can reveal an environment fallback. Read the
-      // effective server state rather than guessing that the value is unset.
-      await loadSettings()
-    } catch {
-      if (mounted.current) {
-        setPassword('')
+        setAnswer({ promptId: '', value: '' })
+      loginRef.current = state
+      setLogin(state)
+      if (state.status === 'complete') {
+        setNotice('Credentials configured. This does not verify a connection.')
+        void refresh().catch(fail)
+      } else if (state.status === 'error')
         setError(
-          'Could not complete the change. Check your connection and try again.'
+          state.error && !/[<>]/.test(state.error)
+            ? state.error
+            : 'Provider login failed. Please retry.'
         )
+    },
+    [refresh, fail]
+  )
+  const activeId = login?.status === 'pending' ? login.id : undefined
+  useEffect(() => {
+    if (!activeId || busy) return
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      try {
+        const state = await aiRequest<LoginState>(
+          `/logins/${encodeURIComponent(activeId)}`,
+          'GET',
+          undefined,
+          controller.signal
+        )
+        if (controller.signal.aborted) return
+        acceptLogin(state)
+        if (state.status === 'pending')
+          timer = setTimeout(() => void poll(), 1500)
+      } catch (cause) {
+        fail(cause)
       }
+    }
+    timer = setTimeout(() => void poll(), 1500)
+    return () => {
+      controller.abort()
+      clearTimeout(timer)
+    }
+  }, [activeId, busy, acceptLogin, fail])
+  const run = async (operation: () => Promise<void>) => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      await operation()
+    } catch (cause) {
+      fail(cause)
     } finally {
       if (mounted.current) setBusy(false)
     }
   }
-
-  const inputClass =
-    'w-full rounded border border-slate6 bg-slate1 px-3 py-2 text-sm text-slate12'
-  const buttonClass =
-    'rounded-md border border-slate6 px-3 py-1.5 text-sm text-slate11 hover:bg-slate3 disabled:opacity-50'
+  const cancelLogin = async () => {
+    const active = loginRef.current
+    loginRef.current = null
+    setAnswer({ promptId: '', value: '' })
+    setLogin(null)
+    if (active?.status === 'pending')
+      await aiRequest(`/logins/${encodeURIComponent(active.id)}`, 'DELETE')
+  }
 
   return (
-    <div className='mx-auto flex h-full w-full max-w-4xl flex-col gap-6 overflow-y-auto p-4 md:p-8'>
-      <header className='flex items-center gap-3 border-b border-slate5 pb-6'>
-        <div className='flex size-10 shrink-0 items-center justify-center rounded-lg border border-slate5 bg-slate3 text-slate10'>
-          <Key size={20} />
-        </div>
+    <div className='mx-auto flex h-full w-full min-w-0 max-w-6xl flex-col gap-5 overflow-y-auto p-4 md:p-8'>
+      <header className='flex items-center gap-3 border-b border-slate5 pb-5'>
+        <Settings2 size={22} className='shrink-0 text-slate10' />
         <div>
-          <h2 className='text-xl font-semibold text-slate12'>AI Settings</h2>
+          <h2 className='text-xl font-semibold text-slate12'>AI settings</h2>
           <p className='text-sm text-slate10'>
-            Configure the model and its protected API key.
+            Providers, protected credentials, and the default model.
           </p>
         </div>
       </header>
-      <p className='text-sm text-slate11'>
-        Email, attachment storage, and bootstrap keys are configured in the
-        server environment (.env), not here. Settings marked “Restart required”
-        take effect only after a deployment or administrator restarts the
-        server.
-      </p>
+      <div className='rounded-lg border border-slate5 bg-slate2 p-4 text-sm text-slate11'>
+        <p className='break-words'>
+          Default for new chats:{' '}
+          <strong className='text-slate12'>
+            {data?.defaultModel
+              ? `${data.defaultModel.provider} / ${data.defaultModel.modelId}`
+              : 'Not selected'}
+          </strong>
+        </p>
+        <p className='mt-1'>
+          Existing chats keep their model. Infrastructure deployment
+          configuration (.env) remains outside this UI.
+        </p>
+      </div>
       {error && (
-        <div
+        <p
           role='alert'
-          className='rounded-lg border border-crimson6 bg-crimson3 p-4 text-sm text-crimson11'
+          className='break-words rounded-lg border border-crimson6 bg-crimson3 p-3 text-sm text-crimson11'
         >
           {error}
-        </div>
+        </p>
       )}
       {notice && (
         <p role='status' className='text-sm text-slate11'>
           {notice}
         </p>
       )}
-      {loading ? (
-        <p role='status' className='text-sm text-slate10'>
-          Loading settings...
-        </p>
+      {!data ? (
+        <div>
+          <p className='text-sm text-slate10'>
+            {error ? 'Settings unavailable.' : 'Loading settings…'}
+          </p>
+          {error && (
+            <button
+              className={button}
+              type='button'
+              onClick={() => void run(() => refresh())}
+            >
+              Retry
+            </button>
+          )}
+        </div>
       ) : (
         <>
-          {(error || denied || settings.length === 0) && (
+          <div className='flex flex-wrap items-center justify-between gap-3'>
+            <h3 className='font-medium text-slate12'>Providers</h3>
             <button
               type='button'
               disabled={busy}
-              onClick={() => void loadSettings()}
-              className={`${buttonClass} self-start`}
+              className={`${button} flex items-center gap-2`}
+              onClick={() =>
+                void run(async () => {
+                  await cancelLogin()
+                  setCustom('new')
+                  setConfirm(null)
+                })
+              }
             >
-              Retry loading settings
+              <Plus size={16} />
+              Custom connection
             </button>
-          )}
-          {!denied &&
-            settings.map(setting => {
-              const protectedKey =
-                setting.kind === 'secret' || setting.name.endsWith('_API_KEY')
-              return (
-                <section
-                  key={setting.name}
-                  className='rounded-lg border border-slate5 bg-slate2 p-4'
-                >
+          </div>
+          <div className='grid min-w-0 gap-5 md:grid-cols-[240px_minmax(0,1fr)]'>
+            <aside className='min-w-0'>
+              <label className='relative block'>
+                <Search
+                  size={16}
+                  className='absolute left-3 top-3 text-slate9'
+                />
+                <input
+                  aria-label='Search providers'
+                  className={`${input} pl-9`}
+                  placeholder='Search providers'
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                />
+              </label>
+              <div className='mt-3 flex max-h-72 flex-col gap-2 overflow-y-auto md:max-h-[600px]'>
+                {data.providers
+                  .filter(p =>
+                    `${p.name} ${p.id}`
+                      .toLowerCase()
+                      .includes(query.toLowerCase())
+                  )
+                  .map(p => (
+                    <button
+                      key={p.id}
+                      type='button'
+                      disabled={busy}
+                      aria-pressed={selected === p.id}
+                      className={`min-w-0 rounded-lg border p-3 text-left ${selected === p.id ? 'border-slate8 bg-slate3' : 'border-slate5 hover:bg-slate2'}`}
+                      onClick={() =>
+                        void run(async () => {
+                          await cancelLogin()
+                          setSelected(p.id)
+                          setCustom(null)
+                          setConfirm(null)
+                          setModelQuery('')
+                        })
+                      }
+                    >
+                      <span className='block break-words text-sm font-medium text-slate12'>
+                        {p.name}
+                      </span>
+                      <span className='mt-1 block text-xs text-slate10'>
+                        {p.custom ? 'Custom · ' : ''}
+                        {p.keyless
+                          ? 'Keyless connection'
+                          : p.auth.configured
+                            ? 'Credentials configured'
+                            : 'Not configured'}
+                      </span>
+                    </button>
+                  ))}
+                {!data.providers.some(p =>
+                  `${p.name} ${p.id}`
+                    .toLowerCase()
+                    .includes(query.toLowerCase())
+                ) && (
+                  <p className='p-3 text-sm text-slate10'>
+                    No matching providers.
+                  </p>
+                )}
+              </div>
+            </aside>
+            <div className='min-w-0'>
+              {custom && (
+                <CustomConnection
+                  key={`${custom}-${selected}`}
+                  provider={custom === 'edit' ? provider : undefined}
+                  models={custom === 'edit' ? models : []}
+                  apis={data.customApis}
+                  busy={busy}
+                  onCancel={() => setCustom(null)}
+                  onSave={(id, body) =>
+                    void run(async () => {
+                      await aiRequest(providerPath(id), 'PUT', body)
+                      setCustom(null)
+                      await refresh()
+                      setSelected(id)
+                      setNotice(
+                        'Custom connection saved. Review its credential status before choosing a default.'
+                      )
+                    })
+                  }
+                />
+              )}
+              {!custom && provider && (
+                <section className='min-w-0 rounded-lg border border-slate5 bg-slate2 p-4'>
                   <div className='flex flex-wrap items-start justify-between gap-3'>
                     <div className='min-w-0'>
-                      <h3 className='break-all font-mono text-sm font-medium text-slate12'>
-                        {setting.name}
+                      <h3 className='break-words text-lg font-medium text-slate12'>
+                        {provider.name}
                       </h3>
-                      <p className='mt-1 text-sm text-slate11'>
-                        {setting.isSet ? 'Configured' : 'Not configured'}
-                        {protectedKey ? ' · Protected key' : ''}
+                      <p className='mt-1 text-xs text-slate10'>
+                        {provider.keyless
+                          ? 'No credentials required · Connection not verified'
+                          : provider.auth.configured
+                            ? 'Credentials configured · Connection not verified'
+                            : 'Credentials not configured'}
                       </p>
-                      {!protectedKey && setting.isSet && (
-                        <p className='mt-1 break-all text-sm text-slate11'>
-                          {setting.value}
+                      {provider.auth.source && (
+                        <p className='mt-1 break-words text-xs text-slate10'>
+                          Source: {provider.auth.source}
                         </p>
                       )}
-                      <p
-                        className={`mt-2 text-xs ${setting.pendingRestart ? 'text-crimson11' : 'text-slate10'}`}
-                      >
-                        {setting.pendingRestart
-                          ? 'Restart required'
-                          : setting.isSet && setting.applyMode === 'live'
-                            ? 'Active now'
-                            : setting.applyMode === 'restart'
-                              ? 'Changes require restart'
-                              : 'Changes apply live'}
-                      </p>
-                    </div>
-                    <div className='flex gap-2'>
-                      <button
-                        type='button'
-                        disabled={busy}
-                        onClick={() => {
-                          setDrafts({})
-                          setEditing(setting.name)
-                          setDeleting(null)
-                          setPassword('')
-                          setError(null)
-                          setNotice(null)
-                        }}
-                        className={buttonClass}
-                      >
-                        {setting.isSet ? 'Replace' : 'Set value'}
-                      </button>
-                      {setting.isSet && (
-                        <button
-                          type='button'
-                          disabled={busy}
-                          aria-label={`Delete ${setting.name}`}
-                          onClick={() => {
-                            setDrafts({})
-                            setDeleting(setting.name)
-                            setEditing(null)
-                            setPassword('')
-                            setError(null)
-                            setNotice(null)
-                          }}
-                          className={`${buttonClass} hover:text-crimson11`}
-                        >
-                          <Trash size={16} />
-                        </button>
+                      {provider.baseUrl && (
+                        <p className='mt-2 break-all text-xs text-slate10'>
+                          {provider.baseUrl}
+                        </p>
                       )}
                     </div>
+                    {provider.custom && (
+                      <button
+                        type='button'
+                        className={button}
+                        disabled={
+                          busy || modelsLoading || modelsFailed || !!activeId
+                        }
+                        onClick={() => setCustom('edit')}
+                      >
+                        Edit connection
+                      </button>
+                    )}
                   </div>
-                  {editing === setting.name && (
-                    <form
-                      className='mt-4 flex flex-col gap-3 border-t border-slate5 pt-4'
-                      onSubmit={e => {
-                        e.preventDefault()
-                        void mutate(setting, false)
-                      }}
-                    >
-                      <label
-                        htmlFor={`value-${setting.name}`}
-                        className='text-sm text-slate11'
+                  <div className='mt-4 flex flex-wrap gap-2'>
+                    {provider.authMethods.map(method => (
+                      <button
+                        type='button'
+                        key={method.type}
+                        className={`${button} flex items-center gap-2`}
+                        disabled={busy || !!activeId}
+                        onClick={() =>
+                          void run(async () => {
+                            setAnswer({ promptId: '', value: '' })
+                            const state = await aiRequest<LoginState>(
+                              `${providerPath(selected)}/login`,
+                              'POST',
+                              { method: method.type }
+                            )
+                            acceptLogin(state)
+                          })
+                        }
                       >
-                        {protectedKey
-                          ? 'New key (existing key is never shown)'
-                          : 'New value'}
-                      </label>
-                      <input
-                        id={`value-${setting.name}`}
-                        placeholder={
-                          setting.name === 'AZURE_OPENAI_INPUT'
-                            ? 'text or text,image'
-                            : undefined
+                        <KeyRound size={14} />
+                        {method.label}
+                      </button>
+                    ))}
+                    {provider.auth.configured && !provider.keyless && (
+                      <button
+                        type='button'
+                        className={button}
+                        disabled={busy || !!activeId}
+                        onClick={() => setConfirm('disconnect')}
+                      >
+                        Disconnect
+                      </button>
+                    )}
+                    {provider.custom && (
+                      <button
+                        type='button'
+                        className={button}
+                        disabled={
+                          busy ||
+                          !!activeId ||
+                          data.defaultModel?.provider === selected
                         }
-                        pattern={
-                          setting.name === 'AZURE_OPENAI_INPUT'
-                            ? 'text(,image)?'
-                            : undefined
-                        }
-                        required
-                        disabled={busy}
-                        type={protectedKey ? 'password' : 'text'}
-                        autoComplete='off'
-                        spellCheck={false}
-                        value={drafts[setting.name] ?? ''}
-                        onChange={e =>
-                          setDrafts(current => ({
-                            ...current,
-                            [setting.name]: e.target.value,
-                          }))
-                        }
-                        className={inputClass}
-                      />
-                      <div className='flex justify-end gap-2'>
-                        <button
-                          type='button'
-                          disabled={busy}
-                          onClick={() => {
-                            setDrafts({})
-                            setEditing(null)
-                          }}
-                          className={buttonClass}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type='submit'
-                          disabled={busy}
-                          className='flex items-center gap-2 rounded-md bg-slate12 px-3 py-1.5 text-sm text-slate1 disabled:opacity-50'
-                        >
-                          <Save size={16} />
-                          {busy ? 'Saving...' : 'Save'}
-                        </button>
-                      </div>
-                    </form>
+                        onClick={() => setConfirm('delete')}
+                      >
+                        Delete connection
+                      </button>
+                    )}
+                  </div>
+                  {!provider.authMethods.length && !provider.keyless && (
+                    <p className='mt-3 text-sm text-slate10'>
+                      This provider uses ambient credentials from the server
+                      environment or its native credential chain. Configure them
+                      through your deployment administrator.
+                    </p>
                   )}
-                  {deleting === setting.name && (
-                    <form
-                      className='mt-4 flex flex-col gap-3 border-t border-slate5 pt-4'
-                      onSubmit={e => {
-                        e.preventDefault()
-                        void mutate(setting, true)
-                      }}
-                    >
+                  {confirm && (
+                    <div className='mt-4 rounded-md border border-slate6 p-3'>
                       <p className='text-sm text-slate11'>
-                        Confirm deletion of {setting.name}. This removes the
-                        server-managed value. An external fallback, if set,
-                        remains active.
+                        {confirm === 'disconnect'
+                          ? 'Remove stored credentials? An environment fallback may remain configured.'
+                          : `Delete ${provider.name} and its custom model catalog?`}
                       </p>
-                      <label
-                        htmlFor={`password-${setting.name}`}
-                        className='text-sm text-slate11'
-                      >
-                        Current account password
-                      </label>
-                      <input
-                        id={`password-${setting.name}`}
-                        type='password'
-                        autoComplete='current-password'
-                        required
-                        disabled={busy}
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        className={inputClass}
-                      />
-                      <div className='flex justify-end gap-2'>
+                      <div className='mt-3 flex flex-wrap gap-2'>
                         <button
                           type='button'
+                          className={button}
                           disabled={busy}
-                          onClick={() => {
-                            setDeleting(null)
-                            setPassword('')
-                          }}
-                          className={buttonClass}
+                          onClick={() => setConfirm(null)}
                         >
                           Cancel
                         </button>
                         <button
-                          type='submit'
+                          type='button'
+                          className={button}
                           disabled={busy}
-                          className='rounded-md border border-crimson6 bg-crimson3 px-3 py-1.5 text-sm text-crimson11 disabled:opacity-50'
+                          onClick={() =>
+                            void run(async () => {
+                              await aiRequest(
+                                `${providerPath(selected)}${confirm === 'disconnect' ? '/credential' : ''}`,
+                                'DELETE'
+                              )
+                              setConfirm(null)
+                              await refresh()
+                              setNotice(
+                                'Change saved. Effective credential status has been refreshed.'
+                              )
+                            })
+                          }
                         >
-                          {busy ? 'Deleting...' : 'Confirm deletion'}
+                          Confirm {confirm}
                         </button>
                       </div>
-                    </form>
+                    </div>
                   )}
+                  {login?.providerId === selected && (
+                    <div className='mt-4 rounded-lg border border-slate6 bg-slate1 p-4'>
+                      <h4 className='text-sm font-medium text-slate12'>
+                        Provider login · {login.status}
+                      </h4>
+                      <div className='mt-3 space-y-3 break-words text-sm text-slate11'>
+                        {login.events.map((event, index) => (
+                          // biome-ignore lint/suspicious/noArrayIndexKey: Native events are an append-only log with no event IDs or local row state.
+                          <div key={`${event.type}-${index}`}>
+                            {'message' in event && (
+                              <p className='whitespace-pre-wrap'>
+                                {event.message}
+                              </p>
+                            )}
+                            {event.type === 'auth_url' && (
+                              <>
+                                <p>{event.instructions}</p>
+                                <AuthLink url={event.url} />
+                              </>
+                            )}
+                            {event.type === 'device_code' && (
+                              <>
+                                <p>
+                                  Device code:{' '}
+                                  <strong className='select-all font-mono text-slate12'>
+                                    {event.userCode}
+                                  </strong>
+                                </p>
+                                <AuthLink url={event.verificationUri} />
+                              </>
+                            )}
+                            {event.type === 'info' &&
+                              event.links?.map(link => (
+                                <AuthLink
+                                  key={link.url}
+                                  url={link.url}
+                                  label={link.label}
+                                />
+                              ))}
+                          </div>
+                        ))}
+                      </div>
+                      {login.status === 'pending' && login.prompt && (
+                        <form
+                          key={login.prompt.id}
+                          className='mt-4 space-y-3'
+                          onSubmit={e => {
+                            e.preventDefault()
+                            const promptId = login.prompt?.id
+                            const value = answer.value
+                            if (
+                              !promptId ||
+                              answer.promptId !== promptId ||
+                              loginRef.current?.prompt?.id !== promptId
+                            )
+                              return
+                            setAnswer({ promptId: '', value: '' })
+                            void run(async () => {
+                              acceptLogin(
+                                await aiRequest<LoginState>(
+                                  `/logins/${encodeURIComponent(login.id)}/answer`,
+                                  'POST',
+                                  { promptId, value }
+                                )
+                              )
+                            })
+                          }}
+                        >
+                          <label
+                            htmlFor='login-answer'
+                            className='block whitespace-pre-wrap text-sm text-slate11'
+                          >
+                            {login.prompt.message}
+                          </label>
+                          {login.prompt.type === 'select' ? (
+                            <>
+                              <select
+                                id='login-answer'
+                                required
+                                className={input}
+                                disabled={busy}
+                                value={
+                                  answer.promptId === login.prompt.id
+                                    ? answer.value
+                                    : ''
+                                }
+                                onChange={e =>
+                                  setAnswer({
+                                    promptId: login.prompt?.id ?? '',
+                                    value: e.target.value,
+                                  })
+                                }
+                              >
+                                <option value=''>Choose an option</option>
+                                {login.prompt.options?.map(option => (
+                                  <option key={option.id} value={option.id}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                              {login.prompt.options?.map(
+                                option =>
+                                  option.description && (
+                                    <p
+                                      key={option.id}
+                                      className='text-xs text-slate10'
+                                    >
+                                      {option.label}: {option.description}
+                                    </p>
+                                  )
+                              )}
+                            </>
+                          ) : (
+                            <input
+                              id='login-answer'
+                              required
+                              type={
+                                login.prompt.type === 'secret'
+                                  ? 'password'
+                                  : 'text'
+                              }
+                              autoComplete='off'
+                              spellCheck={false}
+                              disabled={busy}
+                              className={input}
+                              placeholder={login.prompt.placeholder}
+                              value={
+                                answer.promptId === login.prompt.id
+                                  ? answer.value
+                                  : ''
+                              }
+                              onChange={e =>
+                                setAnswer({
+                                  promptId: login.prompt?.id ?? '',
+                                  value: e.target.value,
+                                })
+                              }
+                            />
+                          )}
+                          <button
+                            type='submit'
+                            className={button}
+                            disabled={
+                              busy ||
+                              answer.promptId !== login.prompt.id ||
+                              !answer.value
+                            }
+                          >
+                            Continue
+                          </button>
+                        </form>
+                      )}
+                      <button
+                        type='button'
+                        className={`${button} mt-3`}
+                        disabled={busy}
+                        onClick={() => void run(cancelLogin)}
+                      >
+                        {login.status === 'pending'
+                          ? 'Cancel login'
+                          : 'Dismiss'}
+                      </button>
+                    </div>
+                  )}
+                  <div className='mt-6 border-t border-slate5 pt-4'>
+                    <h4 className='text-sm font-medium text-slate12'>
+                      Model catalog
+                    </h4>
+                    <p className='mt-1 text-xs text-slate10'>
+                      Choose a model for new chats. Providers that require
+                      credentials must be configured first.
+                    </p>
+                    <input
+                      aria-label='Filter models'
+                      className={`${input} mt-3`}
+                      placeholder='Filter by model name or ID'
+                      value={modelQuery}
+                      onChange={e => setModelQuery(e.target.value)}
+                    />
+                    {modelsFailed && (
+                      <button
+                        type='button'
+                        className={`${button} mt-3`}
+                        disabled={busy}
+                        onClick={() => void run(() => refresh())}
+                      >
+                        Retry model catalog
+                      </button>
+                    )}
+                    {modelsLoading ? (
+                      <p role='status' className='mt-4 text-sm text-slate10'>
+                        Loading model catalog…
+                      </p>
+                    ) : (
+                      <div className='mt-3 max-h-[500px] overflow-y-auto'>
+                        {models
+                          .filter(m =>
+                            `${m.name} ${m.id}`
+                              .toLowerCase()
+                              .includes(modelQuery.toLowerCase())
+                          )
+                          .map(model => {
+                            const isDefault =
+                              data.defaultModel?.provider === selected &&
+                              data.defaultModel.modelId === model.id
+                            return (
+                              <div
+                                key={model.id}
+                                className='flex flex-wrap items-center justify-between gap-3 border-b border-slate5 py-3'
+                              >
+                                <div className='min-w-0 flex-1'>
+                                  <p className='break-words text-sm font-medium text-slate12'>
+                                    {model.name}
+                                  </p>
+                                  <p className='break-all text-xs text-slate10'>
+                                    {model.id}
+                                  </p>
+                                  <p className='mt-1 text-xs text-slate10'>
+                                    {model.input.includes('image')
+                                      ? 'Text + image'
+                                      : 'Text'}
+                                    {model.reasoning ? ' · Reasoning' : ''} ·{' '}
+                                    {model.contextWindow.toLocaleString()}{' '}
+                                    context · {model.maxTokens.toLocaleString()}{' '}
+                                    output
+                                  </p>
+                                </div>
+                                <button
+                                  type='button'
+                                  className={`${button} flex shrink-0 items-center gap-1`}
+                                  disabled={
+                                    busy ||
+                                    isDefault ||
+                                    (!provider.auth.configured &&
+                                      !provider.keyless)
+                                  }
+                                  onClick={() =>
+                                    void run(async () => {
+                                      await aiRequest('/default', 'PUT', {
+                                        provider: selected,
+                                        modelId: model.id,
+                                      })
+                                      await refresh()
+                                      setNotice(
+                                        'Default saved for new chats. Existing chats keep their model.'
+                                      )
+                                    })
+                                  }
+                                >
+                                  {isDefault && <Check size={14} />}
+                                  {isDefault ? 'Default' : 'Use as default'}
+                                </button>
+                              </div>
+                            )
+                          })}
+                        {!models.some(m =>
+                          `${m.name} ${m.id}`
+                            .toLowerCase()
+                            .includes(modelQuery.toLowerCase())
+                        ) && (
+                          <p className='py-4 text-sm text-slate10'>
+                            No matching models.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </section>
-              )
-            })}
+              )}
+            </div>
+          </div>
         </>
       )}
     </div>
+  )
+}
+
+function AuthLink({ url, label }: { url: string; label?: string }) {
+  const href = safeUrl(url)
+  return href ? (
+    <a
+      href={href}
+      target='_blank'
+      rel='noopener noreferrer'
+      className='block break-all text-slate12 underline underline-offset-4'
+    >
+      {label || 'Open provider authorization page'}
+    </a>
+  ) : (
+    <p className='text-slate10'>
+      Provider supplied an unsupported authorization link.
+    </p>
   )
 }

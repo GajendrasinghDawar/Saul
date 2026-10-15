@@ -12,6 +12,8 @@ import { SubagentExtension } from '../agent/subagents/tool.ts'
 import { LaliExtension } from '../agent/tools.ts'
 import { db } from '../db/index.ts'
 import { userConversations } from '../db/schema.ts'
+import { errorCategory, logger } from '../logger.ts'
+import { AiError, type ModelRef } from './ai.ts'
 import { type Attachment, attachmentContent } from './attachments.ts'
 import {
   type ReplyReference,
@@ -22,13 +24,14 @@ import {
 
 export class ChatService {
   harness: Harness
-  providerName: string
-  modelId: string
+  private currentModel: () => ModelRef | null | Promise<ModelRef | null>
 
-  constructor(harness: Harness, providerName: string, modelId: string) {
+  constructor(
+    harness: Harness,
+    currentModel: () => ModelRef | null | Promise<ModelRef | null>
+  ) {
     this.harness = harness
-    this.providerName = providerName
-    this.modelId = modelId
+    this.currentModel = currentModel
   }
 
   async getOrCreateMainConversationId(userId: string): Promise<ConversationId> {
@@ -57,13 +60,18 @@ export class ChatService {
   }
 
   async createConversation(userId: string): Promise<ConversationId> {
+    const model = await this.currentModel()
+    if (!model)
+      throw new AiError(
+        'No default AI model is configured. Ask an administrator to select one.'
+      )
     const convRecord = await this.harness.commit(async tx => {
       return tx.createConversation({ ownership: { kind: 'ownerless' } })
     }, BACKGROUND_CONTEXT)
 
     await this.harness.commit(async tx => {
       await configure(tx, convRecord.id, {
-        model: { provider: this.providerName, modelId: this.modelId },
+        model,
         extensions: {
           add: [LaliExtension, SubagentExtension, ReminderExtension],
         },
@@ -123,7 +131,12 @@ export class ChatService {
             .set({ title: newTitle })
             .where(eq(userConversations.conversationId, String(conversationId)))
         }, BACKGROUND_CONTEXT)
-        .catch(console.error)
+        .catch(error =>
+          logger.error('conversation.title_failed', {
+            conversationId,
+            category: errorCategory(error),
+          })
+        )
     }
 
     const submission = await conv.submit(

@@ -97,7 +97,11 @@ async function fixture(headForbidden = false) {
   })
   app.use(
     '/api/artifacts',
-    createArtifactsRouter(store, true, (_req, _res, next) => next())
+    createArtifactsRouter(
+      store,
+      () => true,
+      (_req, _res, next) => next()
+    )
   )
   const api = createServer(app)
   const baseUrl = await listen(api)

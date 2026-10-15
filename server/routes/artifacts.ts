@@ -1,6 +1,8 @@
 import express, {
   type ErrorRequestHandler,
+  type Request,
   type RequestHandler,
+  type Response,
   Router,
 } from 'express'
 import rateLimit from 'express-rate-limit'
@@ -12,7 +14,7 @@ import {
 
 export function createArtifactsRouter(
   store: AttachmentStore,
-  supportsImages: boolean,
+  supportsImages: (req: Request, res: Response) => boolean | Promise<boolean>,
   csrf: RequestHandler
 ) {
   const router = Router()
@@ -20,9 +22,19 @@ export function createArtifactsRouter(
     res.setHeader('Cache-Control', 'no-store')
     next()
   })
-  router.get('/capabilities', (_req, res) =>
-    res.json(store.capabilities(supportsImages))
-  )
+  router.get('/capabilities', async (req, res) => {
+    try {
+      const images = await supportsImages(req, res)
+      res.json(store.capabilities(images))
+    } catch (error) {
+      res.status(error instanceof AttachmentError ? error.status : 503).json({
+        error:
+          error instanceof AttachmentError
+            ? error.message
+            : 'Could not read model capabilities.',
+      })
+    }
+  })
   router.post(
     '/',
     csrf,

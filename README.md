@@ -74,8 +74,8 @@ Generate `SAUL_SECRETS_KEY` **once per installation** with that command. It must
 
 Optional service configuration:
 
-- Chat needs `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_BASE_URL`, and `AZURE_OPENAI_MODEL`. Use your provider's HTTPS API base URL and your real deployment or model name. These values are not needed to open the UI. The default model is `gpt-6-luna`. Do not assume that your account provides this model.
-- Set `AZURE_OPENAI_INPUT=text,image` only when the deployment supports images. Unknown deployment names use text-only input. Restart the backend after you change the model, base URL, or input setting.
+- Configure chat in **Settings**: choose a Pi AI provider, complete its API-key or supported account login, then select a default model. Built-in providers include OpenAI, Anthropic, Google, Azure and Amazon Bedrock. Pi's native environment and credential-file sources remain supported. Settings requires administrator access; model availability still depends on your provider account.
+- For a custom endpoint, add a connection using its Pi API family and actual model metadata. No model is selected implicitly. Optionally bootstrap a built-in default with `SAUL_AI_PROVIDER` and `SAUL_AI_MODEL`, plus that provider's environment credentials. These only initialize an installation without saved AI configuration. Existing Azure deployment environment configuration is also recognized. See [AI configuration](docs/server-settings.md).
 - `RESEND_API_KEY` enables email, including password reset. `MY_EMAIL_ADDRESS` sets the reminder and digest recipient; password resets go to the account email. Both values come only from `.env` or injected environment variables. Basic email/password sign-in does not need a Resend key.
 - S3 settings enable attachments. They are not needed for text chat. See [S3-compatible attachments](#s3-compatible-attachments).
 - Remote database credentials are used only in production. Development and tests ignore remote database URLs and tokens. See [database setup](#database-setup) and [Pi storage configuration](docs/pi-libsql-storage.md).
@@ -92,9 +92,9 @@ S3_ACCESS_KEY_ID=<access-key-id-or-appwrite-project-id>
 S3_SECRET_ACCESS_KEY=<secret-access-key>
 ```
 
-Restart the backend after changing `.env`. Omit services you do not need. Storage and email settings cannot be read or changed through `/api/secrets`; old database overrides are retained but ignored. Before upgrading an installation configured only through the UI, put its working values in `.env` or deployment secrets. No credentials are copied or deleted automatically.
+Restart the backend after changing `.env`. Omit services you do not need. Storage and email settings cannot be read or changed through the AI management API; old database overrides are retained but ignored. Before upgrading an installation configured only through the UI, put its working infrastructure values in `.env` or deployment secrets. No credentials are copied or deleted automatically.
 
-Administrators can still edit the four `AZURE_OPENAI_*` settings in the UI. Their encrypted database overrides take priority over environment values. Delete an AI override to use its environment value again. Keep bootstrap and database credentials outside Settings. See [server settings](docs/server-settings.md).
+The raw environment-variable settings API has been removed. Old Azure UI rows are retained but ignored: reconnect the provider through Settings or configure its environment credentials. Native Pi credentials, custom catalogs and the chosen default are encrypted in the app database. UI changes apply live; new chats use the current default while existing chats keep their saved model. Keep bootstrap and database credentials outside Settings.
 
 ### Database setup
 
@@ -135,7 +135,7 @@ For an **existing installation**, back up both databases and keys before deployi
 npm run dev
 ```
 
-This starts the backend in development mode (`tsx watch server/server.ts`) and Vite together. You can also run `npm run dev:backend` and `npm run dev:web` in separate terminals. Press Ctrl+C to stop them. After a Settings change that needs a restart, stop and start the backend. Saving Settings does not restart the backend.
+This starts the backend in development mode (`tsx watch server/server.ts`) and Vite together. You can also run `npm run dev:backend` and `npm run dev:web` in separate terminals. Press Ctrl+C to stop them. AI changes in Settings apply without a restart; changes to `.env` require restarting the backend.
 
 - Web: `http://localhost:5173`. If this port is busy, use the URL that Vite prints.
 - Health check: `http://localhost:3000/health`.
@@ -147,8 +147,8 @@ Vite binds to all interfaces. Use a trusted local network. Do not expose this de
 
 1. Open the web client. On an empty installation, create the first account. Saul makes this account an administrator. Public registration then closes. Only an authenticated administrator can create more users. On an existing installation, use an existing account.
 2. Sign out and sign in. Check the conversation list. Create, rename, and select a test conversation. Open Tasks. These checks do not need a model call.
-3. As an administrator, open Settings. Confirm only AI settings appear; storage and email must not have edit controls. Save a test AI value on a disposable installation, refresh, and check masked keys and restart indicators. A non-administrator must not access secrets. Do not replace working credentials only for testing.
-4. Send a short message only when provider usage is acceptable. Use a configured Azure deployment. Check that Saul creates one user row, streams the response, and keeps the history after reload. Check the transcript before you retry an unclear send error.
+3. As an administrator, open Settings. Search providers, configure credentials using a native login, and select a model. Storage and email must not have edit controls, and saved keys must never be displayed. On a disposable installation, add a custom connection and verify it survives a restart. A non-administrator must not access AI management. Do not replace working credentials only for testing.
+4. Create a new chat and send a short message only when provider usage is acceptable. Check streaming and history after reload. Change the default on a disposable installation: a new chat must use it, while the earlier chat keeps its model. Check the transcript before retrying an unclear send error. OAuth flows requiring a localhost callback run on the server host; use a native manual code/URL prompt where offered.
 
 ## S3-compatible attachments
 

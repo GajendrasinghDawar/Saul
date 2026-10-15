@@ -15,13 +15,18 @@ import { clearTodos, requestTodoClear, saveTodo } from '../../agent/data.ts'
 import type { AppDependencies } from '../../app.ts'
 import { db } from '../../db/index.ts'
 import { approvals, todos, userConversations } from '../../db/schema.ts'
+import { requestLogging } from '../../middleware/logging.ts'
 import { createChatRouter } from '../../routes/chat.ts'
 import { createTasksRouter } from '../../routes/tasks.ts'
 import { AttachmentStore } from '../../services/attachments.ts'
 import { ChatService } from '../../services/chat.ts'
 import { setupDurableHarness } from '../../setup/durable.ts'
 
-test('retry after restart admits one turn; forks and approvals enforce ownership', async () => {
+test('retry after restart admits one turn; forks and approvals enforce ownership', async t => {
+  const logs: string[] = []
+  for (const level of ['info', 'warn', 'error'] as const) {
+    t.mock.method(console, level, (line: string) => logs.push(line))
+  }
   assert.equal(process.env.SAUL_APP_STORAGE_DATABASE_URL, 'file::memory:')
   for (const statement of [
     'CREATE TABLE user_conversations (conversation_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT)',
@@ -35,7 +40,10 @@ test('retry after restart admits one turn; forks and approvals enforce ownership
   models.setProvider(faux.provider)
   const open = () => setupDurableHarness(models, new AttachmentStore())
   let harness = await open()
-  const service = new ChatService(harness, 'faux', 'faux-1')
+  const service = new ChatService(harness, () => ({
+    provider: 'faux',
+    modelId: 'faux-1',
+  }))
   const conversationId = await service.createConversation('alice')
   faux.setResponses([fauxAssistantMessage('First answer')])
   const first = await service.submitMessage(
@@ -54,9 +62,15 @@ test('retry after restart admits one turn; forks and approvals enforce ownership
     harness,
     models,
     attachments: new AttachmentStore(),
-    modelConfig: { providerName: 'faux', modelId: 'faux-1' },
+    ai: {
+      newConversationModel: async () => ({
+        provider: 'faux',
+        modelId: 'faux-1',
+      }),
+    },
   } as unknown as AppDependencies
   const app = express()
+  app.use(requestLogging)
   app.use(express.json())
   app.use((req, res, next) => {
     res.locals.userId = req.headers['x-test-user'] ?? 'alice'
@@ -141,7 +155,10 @@ test('retry after restart admits one turn; forks and approvals enforce ownership
       }),
       fauxAssistantMessage('Waiting for your decision'),
     ])
-    const freshService = new ChatService(harness, 'faux', 'faux-1')
+    const freshService = new ChatService(harness, () => ({
+      provider: 'faux',
+      modelId: 'faux-1',
+    }))
     await freshService.submitMessage(
       conversationId,
       'Clear todos',
@@ -228,6 +245,57 @@ test('retry after restart admits one turn; forks and approvals enforce ownership
     const next = await requestTodoClear('alice', String(conversationId))
     assert.notEqual(next.id, approved.id)
     assert.equal(next.status, 'pending')
+
+    // A provider failure settles normally in Pi. It must still reach the
+    // console, without disclosing prompts, credentials, or raw provider errors.
+    const privateValue = 'PRIVATE-LOG-CANARY'
+    faux.appendResponses([
+      fauxAssistantMessage('', {
+        stopReason: 'error',
+        errorMessage: `401 invalid subscription key: ${privateValue}`,
+      }),
+    ])
+    const failedResponse = await post(`/api/chat?token=${privateValue}`, {
+      conversationId,
+      message: privateValue,
+      requestId: 'provider-error',
+    })
+    assert.equal(failedResponse.status, 200)
+    const records: {
+      event: string
+      category?: string
+      level: string
+      conversationId?: number
+      requestId?: string
+      status?: number
+      route?: string
+      durationMs?: number
+    }[] = logs.map(line => JSON.parse(line))
+    const failure = records.find(
+      record => record.event === 'agent.response_failed'
+    )
+    assert.ok(failure)
+    assert.equal(failure.level, 'error')
+    assert.equal(failure.category, 'authentication')
+    assert.equal(failure.conversationId, conversationId)
+    const request = records.find(
+      record => record.requestId === failedResponse.headers.get('x-request-id')
+    )
+    assert.ok(request)
+    assert.equal(request.status, 200)
+    assert.equal(request.route, '/chat')
+    assert.equal(typeof request.durationMs, 'number')
+    assert.ok(
+      records.some(
+        record =>
+          record.event === 'http.request' &&
+          record.status === 403 &&
+          record.level === 'warn'
+      )
+    )
+    assert.ok(records.some(record => record.event === 'agent.response'))
+    assert.ok(records.some(record => record.event === 'agent.tool_result'))
+    assert.ok(!logs.join('\n').includes(privateValue))
   } finally {
     server.closeAllConnections()
     await new Promise<void>(resolve => server.close(() => resolve()))

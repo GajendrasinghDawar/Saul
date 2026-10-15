@@ -50,8 +50,15 @@ export async function responseError(res: Response): Promise<string> {
   return body || `Request failed (${res.status})`
 }
 
-export async function getArtifactCapabilities(): Promise<ArtifactCapabilities> {
-  const res = await fetch('/api/artifacts/capabilities')
+export async function getArtifactCapabilities(
+  conversationId?: string | null
+): Promise<ArtifactCapabilities> {
+  const query = conversationId
+    ? `?conversationId=${encodeURIComponent(conversationId)}`
+    : ''
+  const res = await fetch(`/api/artifacts/capabilities${query}`, {
+    cache: 'no-store',
+  })
   if (!res.ok) throw new Error(await responseError(res))
   return res.json()
 }

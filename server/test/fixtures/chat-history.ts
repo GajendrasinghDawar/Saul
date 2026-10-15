@@ -106,7 +106,12 @@ test('fork visibility, server quotes, ownership, pagination, and search never ru
         harness,
         models,
         attachments: new AttachmentStore(),
-        modelConfig: { providerName: 'faux', modelId: 'faux-1' },
+        ai: {
+          newConversationModel: async () => ({
+            provider: 'faux',
+            modelId: 'faux-1',
+          }),
+        },
       } as unknown as AppDependencies,
       (_req, _res, next) => next(),
       (_req, _res, next) => next()

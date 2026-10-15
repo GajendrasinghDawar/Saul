@@ -6,6 +6,7 @@ import { createAttachmentExtension } from '../agent/attachments.ts'
 import { ReminderExtension } from '../agent/reminders.ts'
 import { SubagentExtension } from '../agent/subagents/tool.ts'
 import { LaliExtension } from '../agent/tools.ts'
+import { logger } from '../logger.ts'
 import type { AttachmentStore } from '../services/attachments.ts'
 import { durableStorageConfig } from '../storage/config.ts'
 import { openLibsqlStorage } from '../storage/libsql.ts'
@@ -31,7 +32,9 @@ export async function setupDurableHarness(
     { models, registry },
     BACKGROUND_CONTEXT
   )
-  console.log('Pi Durable Harness Booted !!')
+  logger.info('durable.ready', {
+    backend: durableStorageConfig.url ? 'libsql' : 'node_sqlite',
+  })
 
   return harness
 }
