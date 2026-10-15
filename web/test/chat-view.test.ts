@@ -78,6 +78,37 @@ test('does not duplicate a live response after it becomes an entry', () => {
   assert.equal(projection.activeRunId, null)
 })
 
+test('failed replies stay visible without exposing provider errors or losing partial text', () => {
+  for (const content of [[], [{ type: 'text', text: 'Partial answer' }]]) {
+    const { messages, activeRunId } = projectChatView({
+      entries: [
+        userEntry,
+        {
+          id: 2,
+          kind: 'pi.assistant',
+          model: [
+            {
+              content,
+              stopReason: 'error',
+              errorMessage: '401 invalid key: never-expose-this-secret',
+            },
+          ],
+        },
+      ],
+      docs: { 'pi.live': {} },
+    })
+    assert.equal(messages[0]?.content, 'Explain streaming')
+    assert.equal(messages[1]?.content, content.length ? 'Partial answer' : '')
+    assert.equal(
+      messages[1]?.failure,
+      'The assistant could not reply. Check model settings and try again.'
+    )
+    assert.equal(messages[1]?.isComplete, true)
+    assert.equal(activeRunId, null)
+    assert.doesNotMatch(JSON.stringify(messages), /never-expose|401/)
+  }
+})
+
 const attachment = {
   id: 'file-1',
   name: 'notes.md',

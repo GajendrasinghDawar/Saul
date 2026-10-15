@@ -12,6 +12,7 @@ type ContentPart = {
 type ModelMessage = {
   content?: string | ContentPart[]
   stopReason?: string | null
+  errorMessage?: string
 }
 
 type ViewEntry = {
@@ -173,6 +174,9 @@ export function projectChatView(view: ChatView): ChatProjection {
       }
       appendAssistantContent(currentAssistant, model?.content)
       currentAssistant.entryIds?.push(String(entry.id))
+      if (model?.stopReason === 'error')
+        currentAssistant.failure =
+          'The assistant could not reply. Check model settings and try again.'
       const text =
         typeof model?.content === 'string'
           ? model.content

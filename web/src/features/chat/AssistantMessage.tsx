@@ -25,6 +25,7 @@ type AssistantMessageProps = {
   onReject?: () => void
   phase?: AssistantPhase
   onReply?: () => void
+  failure?: string
 }
 
 export function AssistantMessage({
@@ -40,6 +41,7 @@ export function AssistantMessage({
   onReject,
   phase,
   onReply,
+  failure,
 }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false)
   let displayContent = content
@@ -90,6 +92,14 @@ export function AssistantMessage({
               />
             )}
           </div>
+        )}
+        {failure && (
+          <p
+            role='alert'
+            className='rounded-xl border border-red6 bg-red2 px-4 py-3 text-sm text-red11'
+          >
+            {failure}
+          </p>
         )}
         {effects.length > 0 && (
           <div className='mt-4 space-y-3'>

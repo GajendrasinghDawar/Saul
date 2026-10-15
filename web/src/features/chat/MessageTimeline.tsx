@@ -122,6 +122,7 @@ export function MessageTimeline({
                     activities={message.activities}
                     effects={message.effects}
                     isComplete={message.isComplete}
+                    failure={message.failure}
                     active={connected && activeRunId === message.requestId}
                     isLast={index === messages.length - 1}
                     onFork={() => onFork?.(message.requestId)}

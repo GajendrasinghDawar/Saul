@@ -17,6 +17,7 @@ export type Message = {
   activities?: string[]
   effects?: Effect[]
   isComplete?: boolean
+  failure?: string
   reply?: ComposerReply
   phase?: AssistantPhase
   entryIds?: string[]
