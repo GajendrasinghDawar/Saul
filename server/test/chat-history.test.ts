@@ -22,9 +22,9 @@ test('referenced replies and read-only history on isolated SQLite', async () => 
         cwd: directory,
         env: {
           ...env,
-          TURSO_DATABASE_URL: 'file::memory:',
-          TURSO_AUTH_TOKEN: '',
-          TURSO_SYNC_URL: '',
+          NODE_ENV: 'test',
+          SAUL_APP_STORAGE_DATABASE_URL: 'file::memory:',
+          SAUL_APP_STORAGE_DATABASE_TOKEN: '',
         },
         timeout: 30_000,
       }

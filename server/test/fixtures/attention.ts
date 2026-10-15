@@ -15,7 +15,7 @@ import { approvals, userConversations } from '../../db/schema.ts'
 import { TaskService } from '../../services/tasks.ts'
 
 test('attention includes owned signals beyond the first task page without completed-tool noise', async () => {
-  assert.equal(process.env.TURSO_DATABASE_URL, 'file::memory:')
+  assert.equal(process.env.SAUL_APP_STORAGE_DATABASE_URL, 'file::memory:')
   await db.run(
     sql.raw(
       'CREATE TABLE user_conversations (conversation_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT)'

@@ -9,12 +9,9 @@ import {
   fauxProvider,
   fauxToolCall,
 } from '@earendil-works/pi-ai'
-import { createRegistry, Harness } from '@earendil-works/pi-durable'
-import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { eq, sql } from 'drizzle-orm'
 import express from 'express'
 import { clearTodos, requestTodoClear, saveTodo } from '../../agent/data.ts'
-import { LaliExtension } from '../../agent/tools.ts'
 import type { AppDependencies } from '../../app.ts'
 import { db } from '../../db/index.ts'
 import { approvals, todos, userConversations } from '../../db/schema.ts'
@@ -22,9 +19,10 @@ import { createChatRouter } from '../../routes/chat.ts'
 import { createTasksRouter } from '../../routes/tasks.ts'
 import { AttachmentStore } from '../../services/attachments.ts'
 import { ChatService } from '../../services/chat.ts'
+import { setupDurableHarness } from '../../setup/durable.ts'
 
 test('retry after restart admits one turn; forks and approvals enforce ownership', async () => {
-  assert.equal(process.env.TURSO_DATABASE_URL, 'file::memory:')
+  assert.equal(process.env.SAUL_APP_STORAGE_DATABASE_URL, 'file::memory:')
   for (const statement of [
     'CREATE TABLE user_conversations (conversation_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT)',
     "CREATE TABLE approvals (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, action TEXT NOT NULL, detail TEXT, status TEXT NOT NULL DEFAULT 'pending')",
@@ -35,14 +33,7 @@ test('retry after restart admits one turn; forks and approvals enforce ownership
   const faux = fauxProvider({ tokensPerSecond: 100_000 })
   const models = createModels()
   models.setProvider(faux.provider)
-  const registry = createRegistry()
-  registry.install(LaliExtension)
-  const open = async () =>
-    Harness.open(
-      await openNodeSqliteStorage('durable.sqlite'),
-      { models, registry },
-      ctx
-    )
+  const open = () => setupDurableHarness(models, new AttachmentStore())
   let harness = await open()
   const service = new ChatService(harness, 'faux', 'faux-1')
   const conversationId = await service.createConversation('alice')

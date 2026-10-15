@@ -34,8 +34,6 @@ RUN npm ci --omit=dev
 
 # Copy backend source
 COPY server/ ./server/
-COPY drizzle/ ./drizzle/
-COPY drizzle.config.ts ./
 COPY tsconfig.json ./
 
 # Copy built frontend

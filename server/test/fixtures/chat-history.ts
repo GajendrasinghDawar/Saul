@@ -20,7 +20,7 @@ import { AttachmentStore } from '../../services/attachments.ts'
 import { resolveReply, visibleEntry } from '../../services/chat-history.ts'
 
 test('fork visibility, server quotes, ownership, pagination, and search never runs the model', async t => {
-  assert.equal(process.env.TURSO_DATABASE_URL, 'file::memory:')
+  assert.equal(process.env.SAUL_APP_STORAGE_DATABASE_URL, 'file::memory:')
   await db.run(
     sql.raw(
       'CREATE TABLE user_conversations (conversation_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT)'

@@ -15,6 +15,13 @@
       "when": 1791354731455,
       "tag": "0001_powerful_texas_twister",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792046777167,
+      "tag": "0002_auth_role_device_code",
+      "breakpoints": true
     }
   ]
 }

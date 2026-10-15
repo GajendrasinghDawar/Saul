@@ -48,6 +48,6 @@ In the Docker setup, `local-turso.db` was correctly placed inside the persistent
 ## Hardening Recommendations for Self-Hosters
 To prevent users from experiencing these when self-hosting Saul:
 1. **Mandatory Domain**: Require users to provide a `DOMAIN` in `.env`. Do not officially support raw IP hosting in production, as it breaks Web Crypto and Secure Cookies.
-2. **Schema Auto-Push**: Ensure the Docker startup script runs `npx drizzle-kit push` before starting the Node server so the SQLite database schema is always up-to-date.
+2. **Schema Tooling**: Startup applies checked-in migrations from `server/drizzle/` before loading settings. Generate and inspect changes with `npm run db:generate` and `npm run db:check`. Schema push is disabled. Development uses local databases; production requires remote credentials. Follow the [current database setup guide](../README.md#database-setup).
 3. **Graceful Error Handling**: Add a global Express error handler `(err, req, res, next)` to catch middleware crashes (like the rate-limiter one) and return clean JSON instead of crashing or returning HTML.
 4. **Volume Mapping Checks**: Validate on startup that all SQLite database files (`local-turso.db` and `lali-durable.sqlite`) are physically located inside a directory that is mounted as a persistent volume (e.g., `/app/data`).

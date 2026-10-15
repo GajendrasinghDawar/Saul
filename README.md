@@ -12,6 +12,17 @@ Saul is a personal AI assistant for conversations, tasks, reminders, and context
 
 This repository is an active personal project. Some features need external services. The instructions in this file describe local development. They are not production deployment instructions.
 
+## Repository layout
+
+- `server/`: backend code, database schema, `drizzle.config.ts`, and generated migrations in `server/drizzle/`.
+- `web/` and `android/`: client code and client-specific build configuration.
+- `docs/`: architecture, setup, and learning material.
+- Root `package.json` and its lockfile: backend dependencies and commands that run both clients and server tooling. Keep them here until the backend becomes a separate package.
+- Root `biome.json`, `tsconfig.json`, `.gitignore`, `.agents/`, `.github/`, `AGENTS.md`, and `README.md`: repository tooling and guidance. The root TypeScript config currently checks the backend.
+- Root `Dockerfile`, `docker-compose.yml`, and deploy scripts: deployment of the backend and built web client together.
+- Root `.env`: untracked bootstrap configuration. Run development and database commands from the repository root.
+- `data/`: local runtime databases, not source code. Database files and logs do not belong in the tracked root. Keep existing files until their use and backup requirements are known; a folder move must not move or delete runtime data.
+
 ## Documentation
 
 - [Local setup](#local-setup-windows-powershell)
@@ -21,6 +32,7 @@ This repository is an active personal project. Some features need external servi
 - [Android implementation guide](docs/android-client-implementation-guide.md)
 - [Server settings](docs/server-settings.md)
 - [Attachment storage and backups](docs/attachments.md)
+- [Pi-Durable libSQL storage trial](docs/pi-libsql-storage.md)
 
 ## Local setup (Windows PowerShell)
 
@@ -41,7 +53,7 @@ Android needs Android Studio/SDK, SDK platform 37, platform-tools, and JDK 17. T
 
 ### Bootstrap configuration
 
-Create or edit the untracked root `.env` file. Never commit real secrets. The backend loads `.env` with `override: true`. This overrides PowerShell environment values. Do not define the same value in both places.
+Create or edit the untracked root `.env` file. Never commit real secrets. The backend loads it with Node's `process.loadEnvFile()`. Existing process environment values take priority over `.env` values.
 
 ```dotenv
 NODE_ENV=development
@@ -50,10 +62,9 @@ BETTER_AUTH_SECRET=<independent-random-auth-secret>
 COOKIE_SECRET=<independent-random-cookie-secret>
 CSRF_SECRET=<independent-random-csrf-secret>
 SAUL_SECRETS_KEY=<64-hex-character-key-generated-once>
-TURSO_DATABASE_URL=file:./data/local-turso.db
 ```
 
-Set the signing secrets even though bootstrap validation only warns when they are missing. The default auth URL is `http://localhost:3000`. The default database URL is `file:./data/local-turso.db`. The default `PORT` is `3000`. Generate each secret with:
+Set the signing secrets even though bootstrap validation only warns when they are missing. The default auth URL is `http://localhost:3000`. The default `PORT` is `3000`. Generate each secret with:
 
 ```powershell
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
@@ -67,24 +78,42 @@ Optional service configuration:
 - Set `AZURE_OPENAI_INPUT=text,image` only when the deployment supports images. Unknown deployment names use text-only input. Restart the backend after you change the model, base URL, or input setting.
 - `RESEND_API_KEY` enables email, including password reset. `MY_EMAIL_ADDRESS` sets the recipient. Basic email/password sign-in does not need a Resend key.
 - S3 settings enable attachments. They are not needed for text chat. See [S3-compatible attachments](#s3-compatible-attachments).
-- Use `TURSO_AUTH_TOKEN` and `TURSO_SYNC_URL` only for an intentional remote database or replica. Omit both for local testing. A sync URL starts remote sync at startup.
+- Remote database credentials are used only in production. Development and tests ignore remote database URLs and tokens. See [database setup](#database-setup) and [Pi storage configuration](docs/pi-libsql-storage.md).
 
 An administrator can enter service values in Settings instead of `.env`. Encrypted database overrides take priority over environment values. Delete an override to use its environment value again. Keep bootstrap and database credentials outside Settings. See [server settings](docs/server-settings.md).
 
 ### Database setup
 
-The account database defaults to `data\local-turso.db`. Pi history and checkpoints use `data\lali-durable.sqlite`. This database is independent of the account database URL. Root-level databases with similar names are not these databases. Pi creates its storage at startup. The account schema must exist before startup loads Settings.
+`npm run dev` forces `NODE_ENV=development`, even if `.env` or the terminal says production. The default local databases are:
 
-For a **new, empty local database only**, confirm that `.env` points to that database. Then run:
+- App: `data\saul-app.dev.sqlite`.
+- Pi: `data\saul-pi.dev.sqlite`.
 
-```powershell
-New-Item -ItemType Directory -Force .\data | Out-Null
-npm run db:push
+Startup creates the local directory and databases, applies checked-in app migrations, then loads Settings and auth. Pi initializes its own schema when the harness opens. Restart applies only pending migrations; it does not reset data or seed accounts. No manual schema push is needed.
+
+Remote URLs in `SAUL_APP_STORAGE_DATABASE_URL` and `SAUL_DURABLE_STORAGE_DATABASE_URL` are ignored outside production, and their tokens are never passed to local clients. A `file:` URL can override a development database for isolated testing. Existing `local-turso.db` and `lali-durable.sqlite` files are not deleted or imported into these new development databases. A fresh development database needs a new local account.
+
+For production, set all four values and `NODE_ENV=production` in the deployment environment:
+
+```dotenv
+SAUL_APP_STORAGE_DATABASE_URL=libsql://<app-database-host>
+SAUL_APP_STORAGE_DATABASE_TOKEN=<app-database-token>
+SAUL_DURABLE_STORAGE_DATABASE_URL=libsql://<pi-database-host>
+SAUL_DURABLE_STORAGE_DATABASE_TOKEN=<pi-database-token>
 ```
 
-`db:push` uses `server/db/schema.ts`. The checked-in SQL migrations do not include `user.role` or `deviceCode`. Do not use those migrations alone for current authentication or Android support. The repository has no root migration runner. `db:seed` inserts example todos. It does not create the schema or an administrator. It is optional.
+Production requires two distinct remote libSQL databases and their tokens. Missing or local database configuration stops startup instead of falling back to local files. Keep one active Saul process, including during replacement. App migrations run before Settings or auth; Pi migrations run before the harness becomes available. This is a direct remote connection, not local-file sync. Database storage alone does not preserve agent workspace files or encryption keys.
 
-For an **existing installation**, stop the backend before schema work. Back up both databases, configuration, and the separate encryption key. Include journal or WAL files when applicable. Do not delete databases. Do not reset Settings. Do not run `db:seed`. Do not accept destructive `db:push` prompts without review. Compare the account schema with `server/db/schema.ts`. Test a data-preserving migration on a backup first. The repository has no verified migration or admin-promotion command for existing installations. Existing users are not promoted automatically. See [server settings release limits](docs/server-settings.md).
+When changing `server/db/schema.ts`, generate and inspect a migration before release:
+
+```powershell
+npm run db:generate -- --name=describe_change
+npm run db:check
+```
+
+These commands force development mode and do not apply database changes. Migration SQL and snapshots live in `server/drizzle/`; commit them with the schema change. Startup applies reviewed files, never generates them. `db:push` is removed and direct Drizzle schema push through the project config is disabled. `db:seed` is optional, development-only example data; it does not create an account.
+
+For an **existing installation**, back up both databases and keys before deploying migrations. Test each upgrade on a backup first, and review SQL for destructive changes. Automatic migration is not an automatic guarantee that future SQL is safe. An old database created with schema push may lack migration history: startup refuses conflicting tables instead of guessing a baseline or deleting data. Changing URLs does not import accounts, Settings, or Pi history. Existing users are not promoted automatically.
 
 ### Start development
 
@@ -92,7 +121,7 @@ For an **existing installation**, stop the backend before schema work. Back up b
 npm run dev
 ```
 
-This starts the backend (`tsx watch server/server.ts`) and Vite together. You can also run `npm run dev:backend` and `npm run dev:web` in separate terminals. Press Ctrl+C to stop them. After a Settings change that needs a restart, stop and start the backend. Saving Settings does not restart the backend.
+This starts the backend in development mode (`tsx watch server/server.ts`) and Vite together. You can also run `npm run dev:backend` and `npm run dev:web` in separate terminals. Press Ctrl+C to stop them. After a Settings change that needs a restart, stop and start the backend. Saving Settings does not restart the backend.
 
 - Web: `http://localhost:5173`. If this port is busy, use the URL that Vite prints.
 - Health check: `http://localhost:3000/health`.

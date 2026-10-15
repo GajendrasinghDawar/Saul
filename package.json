@@ -4,11 +4,12 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "dev:backend": "tsx watch server/server.ts",
+    "dev:backend": "cross-env NODE_ENV=development tsx watch server/server.ts",
     "dev:web": "npm run dev --prefix web",
     "dev": "concurrently -n backend,web -c blue,magenta \"npm run dev:backend\" \"npm run dev:web\"",
-    "db:push": "drizzle-kit push",
-    "db:seed": "tsx server/db/seed.ts",
+    "db:generate": "cross-env NODE_ENV=development drizzle-kit generate --config=server/drizzle.config.ts",
+    "db:check": "cross-env NODE_ENV=development drizzle-kit check --config=server/drizzle.config.ts",
+    "db:seed": "cross-env NODE_ENV=development tsx server/db/seed.ts",
     "format": "biome format --write .",
     "lint": "biome check .",
     "format:fix": "biome check --write ."

@@ -1,7 +1,10 @@
-import { db } from './index.ts'
+import { db, migrateAppDatabase } from './index.ts'
 import { todos } from './schema.ts'
 
 async function seed() {
+  if (process.env.NODE_ENV === 'production')
+    throw new Error('Example seed data is disabled in production')
+  await migrateAppDatabase()
   await db.insert(todos).values([
     { id: '1', userId: 'seed-user', title: 'Buy milk' },
     { id: '2', userId: 'seed-user', title: 'Read background-agents course' },
