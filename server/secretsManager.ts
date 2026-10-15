@@ -4,19 +4,12 @@ import { secrets } from './db/schema.ts'
 
 export const settingDefinitions = {
   AZURE_OPENAI_API_KEY: { kind: 'secret', applyMode: 'live' },
-  RESEND_API_KEY: { kind: 'secret', applyMode: 'live' },
-  MY_EMAIL_ADDRESS: { kind: 'env', applyMode: 'live' },
   AZURE_OPENAI_BASE_URL: { kind: 'env', applyMode: 'restart' },
   AZURE_OPENAI_MODEL: { kind: 'env', applyMode: 'restart' },
   AZURE_OPENAI_INPUT: { kind: 'env', applyMode: 'restart' },
-  S3_ENDPOINT: { kind: 'env', applyMode: 'restart' },
-  S3_REGION: { kind: 'env', applyMode: 'restart' },
-  S3_BUCKET: { kind: 'env', applyMode: 'restart' },
-  S3_ACCESS_KEY_ID: { kind: 'secret', applyMode: 'restart' },
-  S3_SECRET_ACCESS_KEY: { kind: 'secret', applyMode: 'restart' },
 } as const
 export type SettingName = keyof typeof settingDefinitions
-const secretsCache = new Map<string, string>()
+const secretsCache = new Map<SettingName, string>()
 const activeSettings = new Map<string, string>()
 const prefix = 'saul:v1:'
 
@@ -73,7 +66,7 @@ function decryptSetting(name: string, value: string) {
 
 export async function loadSecrets() {
   const allSecrets = await db.select().from(secrets)
-  const loaded = new Map<string, string>()
+  const loaded = new Map<SettingName, string>()
   for (const s of allSecrets) {
     if (isSettingName(s.name))
       loaded.set(s.name, decryptSetting(s.name, s.value))
@@ -82,14 +75,16 @@ export async function loadSecrets() {
   for (const [name, value] of loaded) secretsCache.set(name, value)
 }
 
-export function updateSecretCache(name: string, value: string) {
+export function updateSecretCache(name: SettingName, value: string) {
   secretsCache.set(name, value)
 }
-export function deleteSecretCache(name: string) {
+export function deleteSecretCache(name: SettingName) {
   secretsCache.delete(name)
 }
 export function getSecret(name: string, fallback = ''): string {
-  return secretsCache.get(name) ?? process.env[name] ?? fallback
+  // Only UI-supported AI settings can override deployment configuration.
+  const override = isSettingName(name) ? secretsCache.get(name) : undefined
+  return override ?? process.env[name] ?? fallback
 }
 export function getRequiredSecret(name: string): string {
   const value = getSecret(name)
@@ -103,11 +98,7 @@ export function settingStatus(name: SettingName) {
   const definition = settingDefinitions[name]
   const value = getSecret(name)
   const effective =
-    name === 'AZURE_OPENAI_MODEL'
-      ? value || 'gpt-6-luna'
-      : name === 'S3_REGION'
-        ? value || 'us-east-1'
-        : value
+    name === 'AZURE_OPENAI_MODEL' ? value || 'gpt-6-luna' : value
   return {
     name,
     ...definition,
@@ -121,7 +112,7 @@ export function settingStatus(name: SettingName) {
 }
 
 export function validateSettingValue(
-  name: SettingName,
+  name: string,
   value: unknown
 ): value is string {
   if (
@@ -136,8 +127,6 @@ export function validateSettingValue(
     value === '••••••••'
   )
     return false
-  if (name === 'MY_EMAIL_ADDRESS')
-    return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
   if (name === 'AZURE_OPENAI_MODEL')
     return value.length <= 256 && /^[a-zA-Z0-9._-]+$/.test(value)
   if (name === 'AZURE_OPENAI_INPUT')

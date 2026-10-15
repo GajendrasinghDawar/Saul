@@ -76,11 +76,25 @@ Optional service configuration:
 
 - Chat needs `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_BASE_URL`, and `AZURE_OPENAI_MODEL`. Use your provider's HTTPS API base URL and your real deployment or model name. These values are not needed to open the UI. The default model is `gpt-6-luna`. Do not assume that your account provides this model.
 - Set `AZURE_OPENAI_INPUT=text,image` only when the deployment supports images. Unknown deployment names use text-only input. Restart the backend after you change the model, base URL, or input setting.
-- `RESEND_API_KEY` enables email, including password reset. `MY_EMAIL_ADDRESS` sets the recipient. Basic email/password sign-in does not need a Resend key.
+- `RESEND_API_KEY` enables email, including password reset. `MY_EMAIL_ADDRESS` sets the reminder and digest recipient; password resets go to the account email. Both values come only from `.env` or injected environment variables. Basic email/password sign-in does not need a Resend key.
 - S3 settings enable attachments. They are not needed for text chat. See [S3-compatible attachments](#s3-compatible-attachments).
 - Remote database credentials are used only in production. Development and tests ignore remote database URLs and tokens. See [database setup](#database-setup) and [Pi storage configuration](docs/pi-libsql-storage.md).
 
-An administrator can enter service values in Settings instead of `.env`. Encrypted database overrides take priority over environment values. Delete an override to use its environment value again. Keep bootstrap and database credentials outside Settings. See [server settings](docs/server-settings.md).
+Configure email and attachment storage in the untracked root `.env` file (use your provider's actual values):
+
+```dotenv
+RESEND_API_KEY=<resend-api-key>
+MY_EMAIL_ADDRESS=<reminder-and-digest-recipient>
+S3_ENDPOINT=https://<s3-compatible-endpoint>
+S3_REGION=<signing-region>
+S3_BUCKET=<bucket-name-or-appwrite-bucket-id>
+S3_ACCESS_KEY_ID=<access-key-id-or-appwrite-project-id>
+S3_SECRET_ACCESS_KEY=<secret-access-key>
+```
+
+Restart the backend after changing `.env`. Omit services you do not need. Storage and email settings cannot be read or changed through `/api/secrets`; old database overrides are retained but ignored. Before upgrading an installation configured only through the UI, put its working values in `.env` or deployment secrets. No credentials are copied or deleted automatically.
+
+Administrators can still edit the four `AZURE_OPENAI_*` settings in the UI. Their encrypted database overrides take priority over environment values. Delete an AI override to use its environment value again. Keep bootstrap and database credentials outside Settings. See [server settings](docs/server-settings.md).
 
 ### Database setup
 
@@ -133,12 +147,12 @@ Vite binds to all interfaces. Use a trusted local network. Do not expose this de
 
 1. Open the web client. On an empty installation, create the first account. Saul makes this account an administrator. Public registration then closes. Only an authenticated administrator can create more users. On an existing installation, use an existing account.
 2. Sign out and sign in. Check the conversation list. Create, rename, and select a test conversation. Open Tasks. These checks do not need a model call.
-3. As an administrator, open Settings. Save a test service value. Refresh the page. Check masked keys and restart indicators. A non-administrator must not access secrets. Do not replace working credentials only for testing.
+3. As an administrator, open Settings. Confirm only AI settings appear; storage and email must not have edit controls. Save a test AI value on a disposable installation, refresh, and check masked keys and restart indicators. A non-administrator must not access secrets. Do not replace working credentials only for testing.
 4. Send a short message only when provider usage is acceptable. Use a configured Azure deployment. Check that Saul creates one user row, streams the response, and keeps the history after reload. Check the transcript before you retry an unclear send error.
 
 ## S3-compatible attachments
 
-Create a **private** bucket. Create dedicated server credentials with permission to put and get objects under `saul/attachments/*`. Saul does not create buckets. Do not make files public. Do not put server credentials in clients. Enter these settings in administrator Settings, or use environment values. Then **restart the backend**:
+Create a **private** bucket. Create dedicated server credentials with permission to put and get objects under `saul/attachments/*`. Saul does not create buckets. Do not make files public. Do not put server credentials in clients. Set these environment variables in `.env` or deployment secrets, then **restart the backend**:
 
 | Setting | AWS S3 | Cloudflare R2 | Appwrite S3-compatible storage |
 | --- | --- | --- | --- |
@@ -165,7 +179,7 @@ Limits are as follows:
 
 ### Test your real provider
 
-1. Save the settings and restart the backend.
+1. Set the storage environment variables and restart the backend.
 2. Upload a small `.txt` file and a supported image in a test conversation. Check the filenames. Upload does not need a model call.
 3. When provider usage is acceptable, send the text file and ask for a summary. If the deployment supports images, send the image and ask about its contents. Confirm a real response. Upload success alone is not enough.
 4. Download the attachments in the web client. Compare the bytes and names with the original files. Repeat the test in Android with the system save picker.

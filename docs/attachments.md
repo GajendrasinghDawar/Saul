@@ -24,22 +24,25 @@ close the response body without buffering it. This supports services that
 permit GET but reject HEAD. Saul does not need bucket creation, listing,
 deletion, or public ACL permissions.
 
-In web or Android Settings, set:
+Set these environment variables in the untracked root `.env` file or your
+deployment secret manager. Storage is not editable through client Settings:
 
 | Setting | Value |
 | --- | --- |
 | `S3_ENDPOINT` | HTTPS service endpoint, not an object URL |
 | `S3_REGION` | Provider signing region; default `us-east-1`; R2 normally uses `auto` |
 | `S3_BUCKET` | Private bucket name |
-| `S3_ACCESS_KEY_ID` | Dedicated access key ID; hidden in Settings |
-| `S3_SECRET_ACCESS_KEY` | Dedicated secret key; hidden in Settings |
+| `S3_ACCESS_KEY_ID` | Dedicated server access key ID |
+| `S3_SECRET_ACCESS_KEY` | Dedicated server secret key |
 
 Restart the backend after saving these settings. The client uses path-style
 requests so custom S3 endpoints do not need bucket subdomains. HTTPS is required
 in production. HTTP loopback endpoints are permitted for local development only.
 
-All stored overrides are encrypted with the existing `SAUL_SECRETS_KEY`.
-Bootstrap and database credentials remain outside the UI. No bucket or external
+Old S3 database overrides are retained but ignored. Configure their working
+values externally before upgrading; Saul does not export or delete credentials.
+S3 configuration does not use `SAUL_SECRETS_KEY` (that key still protects AI
+overrides). Bootstrap and database credentials remain outside the UI. No bucket or external
 credential is provisioned by this feature. Until the required S3 values are set,
 uploads are disabled and text chat remains available.
 

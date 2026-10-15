@@ -16,19 +16,10 @@ type Setting = {
 
 const supportedNames = new Set([
   'AZURE_OPENAI_API_KEY',
-  'RESEND_API_KEY',
-  'MY_EMAIL_ADDRESS',
   'AZURE_OPENAI_BASE_URL',
   'AZURE_OPENAI_MODEL',
   'AZURE_OPENAI_INPUT',
-  'S3_ENDPOINT',
-  'S3_REGION',
-  'S3_BUCKET',
-  'S3_ACCESS_KEY_ID',
-  'S3_SECRET_ACCESS_KEY',
 ])
-
-const protectedNames = new Set(['S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'])
 
 function SettingsPage() {
   const [settings, setSettings] = useState<Setting[]>([])
@@ -90,9 +81,7 @@ function SettingsPage() {
           .map(s => ({
             ...s,
             value:
-              s.kind === 'secret' ||
-              s.name.endsWith('_API_KEY') ||
-              protectedNames.has(s.name)
+              s.kind === 'secret' || s.name.endsWith('_API_KEY')
                 ? null
                 : s.value,
           }))
@@ -184,18 +173,17 @@ function SettingsPage() {
           <Key size={20} />
         </div>
         <div>
-          <h2 className='text-xl font-semibold text-slate12'>
-            Environment & Secrets
-          </h2>
+          <h2 className='text-xl font-semibold text-slate12'>AI Settings</h2>
           <p className='text-sm text-slate10'>
-            Manage supported server settings and protected API keys.
+            Configure the model and its protected API key.
           </p>
         </div>
       </header>
       <p className='text-sm text-slate11'>
-        Bootstrap keys cannot be changed here. Settings marked “Restart
-        required” take effect only after a deployment or administrator restarts
-        the server.
+        Email, attachment storage, and bootstrap keys are configured in the
+        server environment (.env), not here. Settings marked “Restart required”
+        take effect only after a deployment or administrator restarts the
+        server.
       </p>
       {error && (
         <div
@@ -229,9 +217,7 @@ function SettingsPage() {
           {!denied &&
             settings.map(setting => {
               const protectedKey =
-                setting.kind === 'secret' ||
-                setting.name.endsWith('_API_KEY') ||
-                protectedNames.has(setting.name)
+                setting.kind === 'secret' || setting.name.endsWith('_API_KEY')
               return (
                 <section
                   key={setting.name}

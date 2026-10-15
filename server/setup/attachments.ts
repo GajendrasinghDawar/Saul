@@ -1,8 +1,4 @@
-import {
-  getSecret,
-  markSettingActive,
-  validateSettingValue,
-} from '../secretsManager.ts'
+import { getSecret, validateSettingValue } from '../secretsManager.ts'
 import { AttachmentStore } from '../services/attachments.ts'
 
 export function setupAttachments() {
@@ -16,7 +12,6 @@ export function setupAttachments() {
   for (const name of Object.keys(values) as (keyof typeof values)[]) {
     if (values[name] && !validateSettingValue(name, values[name]))
       throw new Error(`Invalid attachment storage setting: ${name}`)
-    markSettingActive(name, values[name])
   }
   if (!Object.values(values).every(Boolean)) return new AttachmentStore()
   return new AttachmentStore({
