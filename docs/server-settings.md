@@ -22,6 +22,18 @@ capabilities, including image input and reasoning.
 5. Select a default model, then create a new chat. Credentials being configured
    does not prove model permissions or a working network connection.
 
+For **Azure OpenAI**, use the **Azure connection** form in its built-in provider
+panel. Set the resource endpoint (for example
+`https://your-resource.openai.azure.com/openai/v1`) and API version (`v1` by
+default). Choose each deployed model from Pi's catalog and enter its deployment
+name from Azure. Save, enter the API key through the existing native login
+prompt, and select a default model. No Azure `.env` settings are required.
+Saved connection settings override Azure endpoint, API version and deployment
+mapping environment settings. Unmapped models use their model ID as the
+deployment name. Mapping edits retain the key; changing an existing endpoint
+clears the stored key and requires reconnecting. Environment keys remain usable
+if configured. Saving settings does not verify real Azure permissions.
+
 For a custom compatible endpoint, choose **Custom connection**, enter a unique
 connection ID, base URL and Pi API family, then define the actual models it
 serves. Supported families are OpenAI Completions, OpenAI Responses, Anthropic

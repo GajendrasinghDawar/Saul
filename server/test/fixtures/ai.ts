@@ -508,6 +508,167 @@ test('AI persistence, native local generation, admin boundaries and live default
   } finally {
     await harness.close(ctx)
   }
+  const azureEndpoint = createServer(async (req, res) => {
+    let body = ''
+    for await (const chunk of req) body += chunk
+    assert.equal(req.url, '/openai/v1/responses?api-version=2025-04-01-preview')
+    assert.equal(req.headers['api-key'], 'AZURE-UI-CANARY')
+    assert.equal(JSON.parse(body).model, 'saul-deployment')
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    res.write(
+      `data: ${JSON.stringify({
+        type: 'response.output_item.added',
+        output_index: 0,
+        item: { type: 'message', id: 'msg', role: 'assistant', content: [] },
+      })}\n\n`
+    )
+    res.write(
+      `data: ${JSON.stringify({
+        type: 'response.output_text.delta',
+        output_index: 0,
+        content_index: 0,
+        delta: 'Azure UI answer',
+      })}\n\n`
+    )
+    res.end(
+      `data: ${JSON.stringify({
+        type: 'response.completed',
+        response: {
+          id: 'azure-test',
+          status: 'completed',
+          output: [
+            {
+              type: 'message',
+              id: 'msg',
+              role: 'assistant',
+              content: [
+                {
+                  type: 'output_text',
+                  text: 'Azure UI answer',
+                  annotations: [],
+                },
+              ],
+            },
+          ],
+        },
+      })}\n\n`
+    )
+  })
+  azureEndpoint.listen(0, '127.0.0.1')
+  await once(azureEndpoint, 'listening')
+  const azureAddress = azureEndpoint.address()
+  assert.ok(azureAddress && typeof azureAddress !== 'string')
+  const azure = {
+    baseUrl: `http://127.0.0.1:${azureAddress.port}/openai/v1`,
+    apiVersion: '2025-04-01-preview',
+    deployments: { 'gpt-4.1': 'saul-deployment' },
+  }
+  const azureRouter = express()
+  azureRouter.use(express.json())
+  azureRouter.use('/api/ai', createAiRouter(auth, ai))
+  const azureApi = azureRouter.listen(0, '127.0.0.1')
+  await once(azureApi, 'listening')
+  const apiAddress = azureApi.address()
+  assert.ok(apiAddress && typeof apiAddress !== 'string')
+  const connectionUrl = `http://127.0.0.1:${apiAddress.port}/api/ai/providers/azure-openai-responses/connection`
+  try {
+    assert.equal(process.env.AZURE_OPENAI_BASE_URL, undefined)
+    assert.equal(process.env.AZURE_OPENAI_API_KEY, undefined)
+    const request = (token: string, body: unknown) =>
+      fetch(connectionUrl, {
+        method: 'PUT',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      })
+    assert.equal((await request('user', azure)).status, 403)
+    assert.equal(
+      (
+        await request('admin', {
+          ...azure,
+          baseUrl: 'https://user:key@example.com',
+        })
+      ).status,
+      400
+    )
+    assert.equal((await request('admin', azure)).status, 200)
+    const azureLogin = new AiLogins(ai)
+    try {
+      const state = azureLogin.start(
+        'azure-openai-responses',
+        'api_key',
+        'admin'
+      )
+      await new Promise(r => setTimeout(r, 10))
+      azureLogin.answer(
+        state.id,
+        'admin',
+        azureLogin.get(state.id, 'admin').prompt?.id,
+        'AZURE-UI-CANARY'
+      )
+      await new Promise(r => setTimeout(r, 30))
+      assert.equal(azureLogin.get(state.id, 'admin').status, 'complete')
+    } finally {
+      azureLogin.close()
+    }
+    const restored = new AiManager()
+    await restored.load()
+    const metadata = await restored.metadata()
+    assert.deepEqual(
+      metadata.providers.find(p => p.id === 'azure-openai-responses')?.azure,
+      azure
+    )
+    assert.ok(!JSON.stringify(metadata).includes('AZURE-UI-CANARY'))
+    const model = restored.models.getModel('azure-openai-responses', 'gpt-4.1')
+    assert.ok(model)
+    const result = await restored.models.completeSimple(model, {
+      messages: [{ role: 'user', content: 'hello', timestamp: Date.now() }],
+    })
+    assert.equal(result.stopReason, 'stop', result.errorMessage ?? '')
+    assert.equal(
+      result.content[0]?.type === 'text' ? result.content[0].text : null,
+      'Azure UI answer'
+    )
+    // UI-owned endpoint/version/mapping also win over stale deployment env.
+    process.env.AZURE_OPENAI_BASE_URL = 'http://127.0.0.1:1/wrong'
+    process.env.AZURE_OPENAI_API_VERSION = 'wrong'
+    process.env.AZURE_OPENAI_DEPLOYMENT_NAME_MAP = 'gpt-4.1=wrong'
+    try {
+      const again = await restored.models.completeSimple(model, {
+        messages: [
+          { role: 'user', content: 'hello again', timestamp: Date.now() },
+        ],
+      })
+      assert.equal(again.stopReason, 'stop', again.errorMessage ?? '')
+    } finally {
+      delete process.env.AZURE_OPENAI_BASE_URL
+      delete process.env.AZURE_OPENAI_API_VERSION
+      delete process.env.AZURE_OPENAI_DEPLOYMENT_NAME_MAP
+    }
+    await restored.setAzure({
+      ...azure,
+      deployments: { 'gpt-4.1': 'renamed-deployment' },
+    })
+    assert.ok(await restored.models.checkAuth('azure-openai-responses'))
+    await restored.setAzure({
+      ...azure,
+      baseUrl: 'https://different.openai.azure.com/openai/v1',
+    })
+    assert.equal(
+      await restored.models.checkAuth('azure-openai-responses'),
+      undefined
+    )
+  } finally {
+    azureEndpoint.closeAllConnections()
+    azureApi.closeAllConnections()
+    await Promise.all(
+      [azureEndpoint, azureApi].map(
+        server => new Promise<void>(resolve => server.close(() => resolve()))
+      )
+    )
+  }
   await db
     .update(secrets)
     .set({ value: encryptSetting('wrong-record', 'corrupt') })

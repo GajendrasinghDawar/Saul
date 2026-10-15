@@ -31,6 +31,11 @@ const apis: Record<string, ProviderStreams> = {
   'azure-openai-responses': azureOpenAIResponsesApi(),
 }
 export type ModelRef = { provider: string; modelId: string }
+type AzureConnection = {
+  baseUrl: string
+  apiVersion: string
+  deployments: Record<string, string>
+}
 type Custom = {
   id: string
   name: string
@@ -43,6 +48,7 @@ type Config = {
   defaultModel: ModelRef | null
   providers: Custom[]
   deviceId: string
+  azure?: AzureConnection
 }
 
 export class AiError extends Error {}
@@ -177,23 +183,9 @@ function modelObject<T extends object>(value: T | undefined): T | undefined {
   // options rather than maintaining a second compatibility vocabulary.
   return structuredClone(value)
 }
-function validateCustom(id: string, value: unknown): Custom {
-  if (
-    !/^[a-zA-Z0-9._-]{1,100}$/.test(id) ||
-    !value ||
-    typeof value !== 'object'
-  )
-    throw new AiError('Invalid custom provider.')
-  const v = value as Custom
-  if (
-    !text(v.name) ||
-    typeof v.keyless !== 'boolean' ||
-    typeof v.api !== 'string' ||
-    !Object.hasOwn(apis, v.api)
-  )
-    throw new AiError('Invalid custom provider.')
+function validateEndpoint(baseUrl: string) {
   try {
-    const url = new URL(v.baseUrl)
+    const url = new URL(baseUrl)
     if (
       !(
         url.protocol === 'https:' ||
@@ -211,6 +203,23 @@ function validateCustom(id: string, value: unknown): Custom {
       'Use HTTPS or a local HTTP endpoint without credentials, query or fragment.'
     )
   }
+}
+function validateCustom(id: string, value: unknown): Custom {
+  if (
+    !/^[a-zA-Z0-9._-]{1,100}$/.test(id) ||
+    !value ||
+    typeof value !== 'object'
+  )
+    throw new AiError('Invalid custom provider.')
+  const v = value as Custom
+  if (
+    !text(v.name) ||
+    typeof v.keyless !== 'boolean' ||
+    typeof v.api !== 'string' ||
+    !Object.hasOwn(apis, v.api)
+  )
+    throw new AiError('Invalid custom provider.')
+  validateEndpoint(v.baseUrl)
   if (!Array.isArray(v.models) || !v.models.length || v.models.length > 200)
     throw new AiError('Invalid model catalog.')
   const ids = new Set<string>()
@@ -298,6 +307,7 @@ function provider(c: Custom) {
 export class AiManager {
   readonly credentials = new EncryptedCredentialStore()
   readonly models = builtinModels({ credentials: this.credentials })
+  private azureProvider = this.models.getProvider('azure-openai-responses')
   private builtins = new Set(this.models.getProviders().map(p => p.id))
   private queue = new SerialQueue()
   private config: Config = {
@@ -341,6 +351,7 @@ export class AiManager {
           if (this.builtins.has(p.id)) throw new Error()
           return validateCustom(p.id, p)
         })
+        if (c.azure) c.azure = this.validateAzure(c.azure)
         this.config = c
       } catch {
         throw new AiError(
@@ -374,6 +385,7 @@ export class AiManager {
         })
       }
     }
+    if (this.config.azure) this.applyAzure(this.config.azure)
     if (!rows[0]) {
       const providerId =
         process.env.SAUL_AI_PROVIDER ??
@@ -383,6 +395,83 @@ export class AiManager {
         await this.setDefault({ provider: providerId, modelId })
       else if (process.env.SAUL_SECRETS_KEY) await save(configName, this.config)
     }
+  }
+  private validateAzure(value: unknown): AzureConnection {
+    const v = value as AzureConnection | undefined
+    if (
+      !v ||
+      !text(v.apiVersion) ||
+      !v.deployments ||
+      typeof v.deployments !== 'object' ||
+      Array.isArray(v.deployments)
+    )
+      throw new AiError('Invalid Azure connection.')
+    validateEndpoint(v.baseUrl)
+    const deployments: Record<string, string> = {}
+    for (const [id, name] of Object.entries(v.deployments)) {
+      if (
+        (!this.models.getModel('azure-openai-responses', id) &&
+          id !== process.env.AZURE_OPENAI_MODEL) ||
+        !text(name) ||
+        /[,=]/.test(id + name)
+      )
+        throw new AiError(
+          'Choose a catalog model and a valid Azure deployment name.'
+        )
+      deployments[id] = name
+    }
+    if (!Object.keys(deployments).length)
+      throw new AiError('Configure at least one Azure deployment.')
+    return { baseUrl: v.baseUrl, apiVersion: v.apiVersion, deployments }
+  }
+  private applyAzure(connection: AzureConnection) {
+    const p = this.models.getProvider('azure-openai-responses')
+    const apiKey = this.azureProvider?.auth.apiKey
+    if (!p || !apiKey) throw new AiError('Azure provider is unavailable.')
+    this.models.setProvider({
+      ...p,
+      auth: {
+        ...p.auth,
+        apiKey: {
+          ...apiKey,
+          resolve: async input => {
+            const resolved = await apiKey.resolve(input)
+            if (!resolved) return resolved
+            return {
+              ...resolved,
+              env: {
+                ...resolved.env,
+                AZURE_OPENAI_BASE_URL: connection.baseUrl,
+                AZURE_OPENAI_API_VERSION: connection.apiVersion,
+                // Explicit identity entries keep global deployment maps from leaking
+                // into this UI-owned connection.
+                AZURE_OPENAI_DEPLOYMENT_NAME_MAP: p
+                  .getModels()
+                  .map(m => `${m.id}=${connection.deployments[m.id] ?? m.id}`)
+                  .join(','),
+              },
+            }
+          },
+        },
+      },
+    })
+  }
+  setAzure(value: unknown) {
+    return this.queue.run(async () => {
+      const azure = this.validateAzure(value)
+      const previousUrl =
+        this.config.azure?.baseUrl ??
+        process.env.AZURE_OPENAI_BASE_URL ??
+        (process.env.AZURE_OPENAI_RESOURCE_NAME
+          ? `https://${process.env.AZURE_OPENAI_RESOURCE_NAME}.openai.azure.com/openai/v1`
+          : undefined)
+      if (previousUrl && previousUrl !== azure.baseUrl)
+        await this.credentials.delete('azure-openai-responses')
+      const next = { ...this.config, azure }
+      await save(configName, next)
+      this.applyAzure(azure)
+      this.config = next
+    })
   }
   async metadata() {
     return this.queue.run(async () => {
@@ -410,6 +499,9 @@ export class AiManager {
             auth: { configured: Boolean(check), ...check },
             ...(c
               ? { baseUrl: c.baseUrl, api: c.api, keyless: c.keyless }
+              : {}),
+            ...(p.id === 'azure-openai-responses'
+              ? { azure: this.config.azure ?? null }
               : {}),
           }
         })

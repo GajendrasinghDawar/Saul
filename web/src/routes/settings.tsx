@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Check, KeyRound, Plus, Search, Settings2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AzureConnection } from '../components/ai-settings/azure-connection'
 import { CustomConnection } from '../components/ai-settings/custom-connection'
 import {
   aiRequest,
@@ -641,6 +642,27 @@ function SettingsPage() {
                           : 'Dismiss'}
                       </button>
                     </div>
+                  )}
+                  {provider.id === 'azure-openai-responses' && (
+                    <AzureConnection
+                      key={JSON.stringify(provider.azure)}
+                      connection={provider.azure}
+                      models={models}
+                      busy={busy || modelsLoading || modelsFailed || !!activeId}
+                      onSave={connection =>
+                        void run(async () => {
+                          await aiRequest(
+                            `${providerPath(selected)}/connection`,
+                            'PUT',
+                            connection
+                          )
+                          await refresh()
+                          setNotice(
+                            'Azure connection saved. Check credential status, then choose a default model.'
+                          )
+                        })
+                      }
+                    />
                   )}
                   <div className='mt-6 border-t border-slate5 pt-4'>
                     <h4 className='text-sm font-medium text-slate12'>

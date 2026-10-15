@@ -13,6 +13,11 @@ export type Model = {
   maxTokens: number
   [capability: string]: unknown
 }
+export type AzureConnection = {
+  baseUrl: string
+  apiVersion: string
+  deployments: Record<string, string>
+}
 export type Provider = {
   id: string
   name: string
@@ -22,6 +27,7 @@ export type Provider = {
   baseUrl?: string
   api?: string
   keyless?: boolean
+  azure?: AzureConnection | null
 }
 export type Settings = {
   defaultModel: { provider: string; modelId: string } | null

@@ -63,6 +63,14 @@ export function createAiRouter(
     await manager.setDefault(req.body)
     res.json({ success: true })
   })
+  router.put(
+    '/providers/azure-openai-responses/connection',
+    async (req, res) => {
+      logins.cancelProvider('azure-openai-responses')
+      await manager.setAzure(req.body)
+      res.json({ success: true })
+    }
+  )
   router.put('/providers/:id', async (req, res) => {
     logins.cancelProvider(req.params.id)
     await manager.put(req.params.id, req.body)
