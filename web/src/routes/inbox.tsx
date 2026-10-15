@@ -89,8 +89,8 @@ function InboxPage() {
       } else {
         setMessage(
           action === 'approve'
-            ? 'Permission approved. Continue in the source chat when ready; no message was sent.'
-            : 'Request rejected.'
+            ? 'Approved. The waiting agent continues automatically in the source chat.'
+            : 'Rejected. The waiting agent continues without performing the action.'
         )
       }
       setRevision(value => value + 1)

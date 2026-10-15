@@ -43,6 +43,7 @@ export function EffectCard({
   const [approval, setApproval] = useState<Approval | null>(null)
   const [error, setError] = useState('')
   const generation = useRef(0)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A streamed decision invalidates the previously fetched approval state.
   useEffect(() => {
     const version = ++generation.current
     setApproval(null)
@@ -59,7 +60,7 @@ export function EffectCard({
     return () => {
       generation.current++
     }
-  }, [effect.id])
+  }, [effect.id, effect.status])
   const status = approval?.id === effect.id ? approval.status : 'unknown'
   const run = async (action: 'approve' | 'reject') => {
     if (loading || status !== 'pending') return
@@ -120,7 +121,9 @@ export function EffectCard({
       )}
       {approval && (
         <p className='mt-2 text-xs text-slate10'>
-          Approval records your decision. Execution is managed separately.
+          {status === 'interrupted'
+            ? 'This approval wait was cancelled.'
+            : 'Your decision automatically continues the waiting agent in this chat.'}
         </p>
       )}
       {status === 'pending' && (

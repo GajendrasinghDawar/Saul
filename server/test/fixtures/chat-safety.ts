@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
 import test from 'node:test'
+import { setTimeout } from 'node:timers/promises'
 import { BACKGROUND_CONTEXT as ctx } from '@earendil-works/chord/context'
 import {
   createModels,
@@ -159,14 +160,20 @@ test('retry after restart admits one turn; forks and approvals enforce ownership
       provider: 'faux',
       modelId: 'faux-1',
     }))
-    await freshService.submitMessage(
+    const clearTurn = freshService.submitMessage(
       conversationId,
       'Clear todos',
       'reject',
       [],
       'clear-one'
     )
-    const [proposal] = await db.select().from(approvals)
+    void clearTurn.catch(() => {})
+    let proposal: typeof approvals.$inferSelect | undefined
+    for (let i = 0; i < 100; i++) {
+      ;[proposal] = await db.select().from(approvals)
+      if (proposal) break
+      await setTimeout(10)
+    }
     assert.ok(proposal)
     assert.equal(proposal.status, 'pending')
     assert.equal(
@@ -192,29 +199,42 @@ test('retry after restart admits one turn; forks and approvals enforce ownership
     const decision = (
       await db.select().from(approvals).where(eq(approvals.id, proposal.id))
     )[0].status
+    await clearTurn
+    let approved = proposal
     if (decision === 'rejected') {
-      const next = await requestTodoClear('alice', String(conversationId))
+      faux.appendResponses([
+        fauxAssistantMessage(fauxToolCall('clear_todos', {}), {
+          stopReason: 'toolUse',
+        }),
+        fauxAssistantMessage('Todos cleared'),
+      ])
+      const retry = freshService.submitMessage(
+        conversationId,
+        'Request clearing again',
+        'reject',
+        [],
+        'clear-two'
+      )
+      void retry.catch(() => {})
+      for (let i = 0; i < 100; i++) {
+        const pending = await db
+          .select()
+          .from(approvals)
+          .where(eq(approvals.status, 'pending'))
+        if (pending[0]) {
+          approved = pending[0]
+          break
+        }
+        await setTimeout(10)
+      }
       assert.equal(
-        (await post(`/api/tasks/approvals/${next.id}/approve`, {})).status,
+        (await post(`/api/tasks/approvals/${approved.id}/approve`, {})).status,
         200
       )
+      await retry
     }
-    const approved = await requestTodoClear('alice', String(conversationId))
     await assert.rejects(
       clearTodos('alice', 'another-conversation', approved.id)
-    )
-    faux.appendResponses([
-      fauxAssistantMessage(fauxToolCall('clear_todos', {}), {
-        stopReason: 'toolUse',
-      }),
-      fauxAssistantMessage('Todos cleared'),
-    ])
-    await freshService.submitMessage(
-      conversationId,
-      'Proceed with the approved clear',
-      'reject',
-      [],
-      'clear-two'
     )
     assert.equal(
       (await db.select().from(todos).where(eq(todos.id, 'alice-first')))[0]

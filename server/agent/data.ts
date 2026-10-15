@@ -190,21 +190,27 @@ export async function saveTodo(id: string, userId: string, title: string) {
     .onConflictDoNothing()
 }
 
-export async function requestTodoClear(userId: string, conversationId: string) {
+export async function requestTodoClear(
+  userId: string,
+  conversationId: string,
+  proposalId?: string
+) {
   const action = `clear_todos:${conversationId}`
   return db.transaction(async tx => {
     const existing = await tx
       .select()
       .from(schema.approvals)
       .where(
-        sql`${schema.approvals.userId} = ${userId} AND ${schema.approvals.action} = ${action} AND ${schema.approvals.status} IN ('pending', 'approved')`
+        proposalId
+          ? sql`${schema.approvals.id} = ${proposalId} AND ${schema.approvals.userId} = ${userId} AND ${schema.approvals.action} = ${action}`
+          : sql`${schema.approvals.userId} = ${userId} AND ${schema.approvals.action} = ${action} AND ${schema.approvals.status} IN ('pending', 'approved')`
       )
       .limit(1)
     if (existing[0]) return existing[0]
     const [proposal] = await tx
       .insert(schema.approvals)
       .values({
-        id: crypto.randomUUID(),
+        id: proposalId ?? crypto.randomUUID(),
         userId,
         action,
         detail:

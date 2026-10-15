@@ -254,3 +254,65 @@ test('live phases follow current evidence, not previous answer or thinking conte
   assert.equal(complete.activeRunId, null)
   assert.equal(complete.messages.at(-1)?.isComplete, true)
 })
+
+test('approval decisions update the original card and activity without an extra user turn', () => {
+  const base: ChatView = {
+    entries: [
+      userEntry,
+      {
+        id: 2,
+        kind: 'pi.assistant',
+        model: [{ content: [{ type: 'toolCall', name: 'clear_todos' }] }],
+      },
+      {
+        id: 3,
+        kind: 'lali.approval',
+        data: {
+          id: 'permission',
+          status: 'pending',
+          summary: 'Clear pending todos',
+        },
+      },
+    ],
+    docs: {
+      'pi.live': {
+        run: { taskId: 7 },
+        tools: [{ name: 'clear_todos', status: 'running' }],
+      },
+    },
+  }
+  assert.equal(
+    projectChatView(base).messages.at(-1)?.effects?.[0].status,
+    'pending'
+  )
+  for (const status of ['approved', 'rejected', 'interrupted']) {
+    const projection = projectChatView({
+      ...base,
+      entries: [
+        ...(base.entries ?? []),
+        {
+          id: 4,
+          kind: 'lali.approval',
+          data: { id: 'permission', status, summary: 'Clear pending todos' },
+        },
+        {
+          id: 5,
+          kind: 'pi.assistant',
+          model: [{ content: 'Continuing after your decision.' }],
+        },
+      ],
+      docs: { 'pi.live': {} },
+    })
+    const assistant = projection.messages.at(-1)
+    assert.equal(assistant?.effects?.length, 1)
+    assert.equal(assistant?.effects?.[0].status, status)
+    assert.ok(
+      assistant?.activities?.includes(`Approval ${status}: Clear pending todos`)
+    )
+    assert.equal(
+      projection.messages.filter(message => message.role === 'user').length,
+      1
+    )
+    assert.equal(assistant?.content, 'Continuing after your decision.')
+  }
+})

@@ -36,5 +36,7 @@ export async function setupDurableHarness(
     backend: durableStorageConfig.url ? 'libsql' : 'node_sqlite',
   })
 
+  // Recover saved work on boot, even when no browser submits a new message.
+  harness.resume()
   return harness
 }

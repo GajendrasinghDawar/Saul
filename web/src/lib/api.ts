@@ -100,7 +100,7 @@ export type Approval = {
   id: string
   action: string
   detail: string
-  status: 'pending' | 'approved' | 'rejected' | 'consumed'
+  status: 'pending' | 'approved' | 'rejected' | 'consumed' | 'interrupted'
 }
 
 export async function getApproval(id: string): Promise<Approval> {
@@ -126,7 +126,8 @@ export async function getApproval(id: string): Promise<Approval> {
     (approval.status !== 'pending' &&
       approval.status !== 'approved' &&
       approval.status !== 'rejected' &&
-      approval.status !== 'consumed')
+      approval.status !== 'consumed' &&
+      approval.status !== 'interrupted')
   )
     throw new Error('Approval state is unavailable')
   return {

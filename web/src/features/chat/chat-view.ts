@@ -19,6 +19,7 @@ type ViewEntry = {
   id: string | number
   kind: string
   model?: ModelMessage[]
+  data?: { id?: string; status?: string; summary?: string }
 }
 
 type LiveState = {
@@ -152,6 +153,36 @@ export function projectChatView(view: ChatView): ChatProjection {
 
   for (const entry of view.entries ?? []) {
     const model = entry.model?.[0]
+    if (entry.kind === 'lali.approval' && entry.data?.id) {
+      if (!currentAssistant) {
+        currentAssistant = createAssistant(String(entry.id))
+        messages.push(currentAssistant)
+      }
+      const status = entry.data.status
+      if (
+        status === 'pending' ||
+        status === 'approved' ||
+        status === 'rejected' ||
+        status === 'interrupted'
+      ) {
+        const previous = currentAssistant.effects?.find(
+          effect => effect.id === entry.data?.id
+        )
+        if (previous) previous.status = status
+        else
+          currentAssistant.effects?.push({
+            id: entry.data.id,
+            type: 'approval',
+            summary: entry.data.summary ?? 'Action requires your approval',
+            status,
+          })
+        if (status !== 'pending')
+          currentAssistant.activities?.push(
+            `Approval ${status}: ${entry.data.summary ?? 'requested action'}`
+          )
+      }
+      continue
+    }
     if (entry.kind === 'pi.user') {
       if (currentAssistant) currentAssistant.isComplete = true
       const { text, attachments, reply } = parseUserContent(model?.content)

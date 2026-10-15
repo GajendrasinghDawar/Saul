@@ -56,7 +56,7 @@ export class TaskService {
               ? 'Clear pending todos?'
               : 'Approval requested',
             text: conversationId
-              ? 'Clear all pending todos, including new todos at execution time. Approval only grants permission; continue in the source chat to execute.'
+              ? 'Clear all pending todos, including new todos at execution time. Your decision automatically continues the waiting agent in the source chat.'
               : 'Review this request in its source before deciding.',
             timestamp: null,
             source:
@@ -98,7 +98,10 @@ export class TaskService {
       )
       .returning()
 
-    if (result.length > 0) return 'success'
+    if (result.length > 0) {
+      this.harness.resume()
+      return 'success'
+    }
     return (await this.getApproval(id, userId)) ? 'conflict' : 'not_found'
   }
 
@@ -106,7 +109,9 @@ export class TaskService {
     taskIdStr: string,
     userId: string
   ): Promise<'not_found' | 'forbidden' | 'success'> {
-    const taskId = taskIdStr as unknown as TaskId
+    const numericId = Number(taskIdStr)
+    if (!Number.isSafeInteger(numericId) || numericId < 1) return 'not_found'
+    const taskId = numericId as TaskId
     const userConvIds = await getUserConversationIds(userId)
 
     const task = await this.harness.commit(

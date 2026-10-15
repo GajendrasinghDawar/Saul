@@ -13,6 +13,7 @@ import { db } from '../db/index.ts'
 import { todos } from '../db/schema.ts'
 import { errorCategory, logger } from '../logger.ts'
 import { getSecret } from '../secretsManager.ts'
+import { ApprovalTask, ToolApproval } from './approval.ts'
 import {
   DEFAULT_EMAIL_FROM,
   DEFAULT_EMAIL_SUBJECT,
@@ -49,8 +50,53 @@ export const clearTodosTool = defineTool({
   replay: 'safe',
   execute: async (_args, api, ctx) => {
     const userId = await getUserIdForConversation(String(api.conversationId))
-    const proposalId = await api.memo<string>('todo-clear-approval', ctx)
-    if (!proposalId) throw new Error('A new approval is required.')
+    const proposalId = await api.memo(
+      'todo-clear-approval',
+      `todo-clear-${api.taskId}`,
+      ctx
+    )
+    const proposal = await requestTodoClear(
+      userId,
+      String(api.conversationId),
+      proposalId
+    )
+    // Permission already consumed by a previous execution is safe to replay.
+    if (proposal.status !== 'consumed') {
+      const waitTask = await api.commit(async tx => {
+        const state = await tx.doc(ToolApproval, api.taskId)
+        if (!state.taskId) {
+          state.taskId = await tx.createTask(
+            ApprovalTask,
+            { approvalId: proposalId, userId },
+            {
+              ownership: { kind: 'task', taskId: api.taskId },
+            }
+          )
+          await tx.appendEntry(api.conversationId, {
+            kind: 'lali.approval',
+            data: {
+              id: proposalId,
+              status: 'pending',
+              summary: 'Clear pending todos',
+            },
+          })
+        }
+        return state.taskId
+      }, ctx)
+      api.output('Waiting for your approval in Attention.\n')
+      const receipt = await api.waitForTask(waitTask, ctx)
+      if (receipt.state.outcome.status !== 'completed')
+        throw new Error('Approval wait did not complete.')
+      if (receipt.state.outcome.result === 'rejected')
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'The user rejected clearing todos. No todos were changed. Continue without performing this action.',
+            },
+          ],
+        }
+    }
     await clearTodos(userId, String(api.conversationId), proposalId)
     api.output(`Cleared all pending todos\n`)
     return { content: [{ type: 'text', text: 'Success: Cleared all todos.' }] }
@@ -117,6 +163,7 @@ export const LaliExtension = defineExtension({
       return `Current Todos:\n${JSON.stringify(currentTodos, null, 2)}`
     }),
   ],
+  tasks: [ApprovalTask],
   tools: [saveTodoTool, clearTodosTool, sendDigestEmailTool],
   hooks: [
     hook(GenerationTask, {
@@ -151,29 +198,6 @@ export const LaliExtension = defineExtension({
           taskId: api.taskId,
           failed: Boolean(result.isError),
         })
-      },
-      // beforeTool intercepts the tool execution. It's useful for injecting approval flows.
-      beforeTool: async (call, api, ctx) => {
-        if (call.name === 'clear_todos') {
-          // Bind this durable task to one permission, including after restart.
-          if (await api.memo<string>('todo-clear-approval', ctx)) return {}
-          const userId = await getUserIdForConversation(
-            String(api.conversationId)
-          )
-
-          const proposal = await requestTodoClear(
-            userId,
-            String(api.conversationId)
-          )
-          if (proposal.status !== 'approved') {
-            return {
-              block: `[APPROVAL REQUIRED] Proposal ID: ${proposal.id}. Please wait for the user to approve this action via the UI.`,
-            }
-          }
-          await api.memo('todo-clear-approval', proposal.id, ctx)
-        }
-
-        return {} // Let other tools pass normally
       },
     }),
   ],
