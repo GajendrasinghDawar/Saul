@@ -2,6 +2,8 @@
 
 Saul is a personal AI assistant for conversations, tasks, reminders, and context. You can use it on the web and on Android. Saul helps you turn plans into actions. It can send Android notifications and scheduled check-ins.
 
+core idea of saul is that it runs on vps with os acccess and you can access it from anywhere and bend it to your requirement add features of your liking
+
 ## What it provides
 
 - Multi-device access through the web client and Android app.
@@ -154,13 +156,13 @@ Vite binds to all interfaces. Use a trusted local network. Do not expose this de
 
 Create a **private** bucket. Create dedicated server credentials with permission to put and get objects under `saul/attachments/*`. Saul does not create buckets. Do not make files public. Do not put server credentials in clients. Set these environment variables in `.env` or deployment secrets, then **restart the backend**:
 
-| Setting | AWS S3 | Cloudflare R2 | Appwrite S3-compatible storage |
-| --- | --- | --- | --- |
-| `S3_ENDPOINT` | `https://s3.<aws-region>.amazonaws.com` | `https://<account-id>.r2.cloudflarestorage.com` | `https://<region>.cloud.appwrite.io/v1/s3`, using your project's region |
-| `S3_REGION` | Actual bucket region, e.g. `us-east-1` | `auto` | Project region, e.g. `nyc`, or `auto` |
-| `S3_BUCKET` | Actual bucket name, not ARN | Actual bucket name, not account ID | Actual bucket **ID**, not display name or project ID |
-| `S3_ACCESS_KEY_ID` | Dedicated IAM access key ID | R2 S3 access key ID | Appwrite project ID |
-| `S3_SECRET_ACCESS_KEY` | Matching IAM secret | Matching R2 secret | Appwrite API key secret from that same project |
+| Setting                | AWS S3                                  | Cloudflare R2                                   | Appwrite S3-compatible storage                                          |
+| ---------------------- | --------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------- |
+| `S3_ENDPOINT`          | `https://s3.<aws-region>.amazonaws.com` | `https://<account-id>.r2.cloudflarestorage.com` | `https://<region>.cloud.appwrite.io/v1/s3`, using your project's region |
+| `S3_REGION`            | Actual bucket region, e.g. `us-east-1`  | `auto`                                          | Project region, e.g. `nyc`, or `auto`                                   |
+| `S3_BUCKET`            | Actual bucket name, not ARN             | Actual bucket name, not account ID              | Actual bucket **ID**, not display name or project ID                    |
+| `S3_ACCESS_KEY_ID`     | Dedicated IAM access key ID             | R2 S3 access key ID                             | Appwrite project ID                                                     |
+| `S3_SECRET_ACCESS_KEY` | Matching IAM secret                     | Matching R2 secret                              | Appwrite API key secret from that same project                          |
 
 Use actual console identifiers. Do not use placeholders. For Appwrite, use a dedicated API key with `buckets.read`, `files.read`, `buckets.write`, and `files.write` scopes. Project ID, bucket ID, and display name are different values. Confirm the endpoint in your project's S3 connection instructions. Bucket IDs must pass Saul's current lowercase S3-style validation: 3–63 characters; use only letters, digits, dots, and hyphens; do not use consecutive dots.
 

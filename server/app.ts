@@ -18,6 +18,7 @@ import { createArtifactsRouter } from './routes/artifacts.ts'
 import { createChatRouter } from './routes/chat.ts'
 import { createConversationsRouter } from './routes/conversations.ts'
 import { createTasksRouter } from './routes/tasks.ts'
+import { createUsageRouter } from './routes/usage.ts'
 import type { AiManager } from './services/ai.ts'
 import type { AttachmentStore } from './services/attachments.ts'
 import { AttachmentError } from './services/attachments.ts'
@@ -101,6 +102,7 @@ export function createApp(dependencies: AppDependencies) {
   app.use('/api', createAuthGuard(auth))
 
   // Mount Feature Routes
+  app.use('/api/usage', createUsageRouter(dependencies))
   app.use(
     '/api/artifacts',
     createArtifactsRouter(

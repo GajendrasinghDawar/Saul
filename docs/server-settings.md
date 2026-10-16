@@ -1,5 +1,8 @@
 # Administrator AI configuration
 
+`/settings/` is the settings index, with a usage overview and links to
+`/settings/ai-providers` and `/settings/environment-variables`.
+
 Settings manages Pi AI providers, protected credentials, custom endpoints and
 the default model. Saul passes the same Pi AI `Models` collection to Pi Durable;
 there is no separate provider protocol adapter or coding-agent configuration
@@ -127,6 +130,20 @@ flows start a **localhost callback on the server**, which is not the browser's
 localhost when Saul runs on a VPS. Use Pi's manual code/URL prompt where offered;
 otherwise the login must be completed on the server host. This UI does not
 implement a new public OAuth callback proxy.
+
+## Usage overview
+
+Authenticated `GET /api/usage` reads Pi Durable's native per-conversation usage
+ledger for conversations owned by the signed-in user. It includes recorded
+compaction spend without counting inherited fork history again. Model totals
+and tool counters are separate; tools may overlap model activity.
+
+The overview shows lifetime recorded tokens and historical USD cost estimates,
+not a billing period, provider invoice, balance or quota. Costs are not
+recalculated using today's catalog prices. Zero-cost records have unknown
+pricing, not proof of free usage; even a positive estimate may omit unpriced
+activity. Deleted conversations and missing records are not a complete billing
+history. The endpoint executes no models or tools and returns `no-store`.
 
 ## Local verification
 

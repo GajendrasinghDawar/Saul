@@ -92,9 +92,11 @@ export async function aiRequest<T>(
   }
   return res.json()
 }
+
 export function providerPath(id: string) {
   return `/providers/${encodeURIComponent(id)}`
 }
+
 export function safeUrl(value: string): string | undefined {
   try {
     const url = new URL(value)

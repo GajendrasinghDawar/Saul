@@ -164,7 +164,7 @@ export function AzureConnection({
         </button>
         <button
           type='submit'
-          className={button}
+          className='rounded-md border border-slate8 bg-slate12 px-3 py-2 text-sm text-slate1 hover:bg-slate11 disabled:opacity-50'
           disabled={busy || !models.length}
         >
           Save Azure connection

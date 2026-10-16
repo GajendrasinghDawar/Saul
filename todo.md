@@ -1,11 +1,21 @@
+- should we serve vite build with caddy and keep expressjs for api only or serve vite build caddy.
+
+- we should put resend and s3 storage creddentials in env not from ui we want change it frequently its base settings so we should put it in env and not from ui.
+
 - learn appcodebase.
+
+- logging
+
+- also deploy app to playstore where gogle allows us to deploy app to playstore on free tier.
 
 - next thing is to do multiplayer sync for saul. so that multiple users can work on the same document at the same time and see each other's changes in real time.
 
 - here use pi-ai to be provider agnostic currently we are hard coding 'azure-openai-responses' in C:\Users\dawar\projects\lali-template\src\setup\ai.ts
 
 - improve ai.ts
+
 - build test drive ui for saul. when anonymous users can see ui and work.
+
 - realtime multiplayer sync.
 
 - check security how env variables are being used.
@@ -13,8 +23,6 @@
 - admin only one time setup for saul just like Payload. where we setup only one admin coz our app is not multi-tenant. so we can have a one time setup for admin and then he can create other users.
 
 - point andorid app to server url and andriod app boots from there and works just web but with android specific features like push notifications and background sync, nice ux.
-
-Device Authorization
 
 - pocket folder in saul to place random files and documents. like a pocket folder in your phone where you can put random files and documents. so that you can
   access them from anywhere.
@@ -26,3 +34,14 @@ Device Authorization
 - animated icon while messages apears on chat.
 
 - oklch colors for android app and web
+
+## Learn
+
+- • Run targeted walkthroughs: Ask the agent to trace a request or state change from the API layer down to the database, explaining why it structured the data flow that way.
+
+- write documentation for saul how it works insideout manually.
+- use randomid on chat creation
+
+- give saul task to ping sites at particular time and see if site is working or not and then report back to me over channels if its urgent then it can send me email imediately.
+
+- in future use chatgpt subscription if needed

@@ -20,6 +20,9 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as ChatSessionIdRouteImport } from './routes/chat.$sessionId'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsAiProvidersRouteImport } from './routes/settings.ai-providers'
+import { Route as SettingsEnvironmentVariablesRouteImport } from './routes/settings.environment-variables'
 import { Route as ChatThreadThreadIdRouteImport } from './routes/chat.thread.$threadId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -77,6 +80,22 @@ const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
   path: '/chat/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsAiProvidersRoute = SettingsAiProvidersRouteImport.update({
+  id: '/ai-providers',
+  path: '/ai-providers',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsEnvironmentVariablesRoute =
+  SettingsEnvironmentVariablesRouteImport.update({
+    id: '/environment-variables',
+    path: '/environment-variables',
+    getParentRoute: () => SettingsRoute,
+  } as any)
 const ChatThreadThreadIdRoute = ChatThreadThreadIdRouteImport.update({
   id: '/chat/thread/$threadId',
   path: '/chat/thread/$threadId',
@@ -91,10 +110,13 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
+  '/settings/ai-providers': typeof SettingsAiProvidersRoute
+  '/settings/environment-variables': typeof SettingsEnvironmentVariablesRoute
+  '/settings/': typeof SettingsIndexRoute
   '/chat/thread/$threadId': typeof ChatThreadThreadIdRoute
 }
 export interface FileRoutesByTo {
@@ -105,10 +127,12 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
+  '/settings/ai-providers': typeof SettingsAiProvidersRoute
+  '/settings/environment-variables': typeof SettingsEnvironmentVariablesRoute
+  '/settings': typeof SettingsIndexRoute
   '/chat/thread/$threadId': typeof ChatThreadThreadIdRoute
 }
 export interface FileRoutesById {
@@ -120,10 +144,13 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
+  '/settings/ai-providers': typeof SettingsAiProvidersRoute
+  '/settings/environment-variables': typeof SettingsEnvironmentVariablesRoute
+  '/settings/': typeof SettingsIndexRoute
   '/chat/thread/$threadId': typeof ChatThreadThreadIdRoute
 }
 export interface FileRouteTypes {
@@ -140,6 +167,9 @@ export interface FileRouteTypes {
     | '/signup'
     | '/tasks'
     | '/chat/$sessionId'
+    | '/settings/ai-providers'
+    | '/settings/environment-variables'
+    | '/settings/'
     | '/chat/thread/$threadId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -150,10 +180,12 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/search'
-    | '/settings'
     | '/signup'
     | '/tasks'
     | '/chat/$sessionId'
+    | '/settings/ai-providers'
+    | '/settings/environment-variables'
+    | '/settings'
     | '/chat/thread/$threadId'
   id:
     | '__root__'
@@ -168,6 +200,9 @@ export interface FileRouteTypes {
     | '/signup'
     | '/tasks'
     | '/chat/$sessionId'
+    | '/settings/ai-providers'
+    | '/settings/environment-variables'
+    | '/settings/'
     | '/chat/thread/$threadId'
   fileRoutesById: FileRoutesById
 }
@@ -179,7 +214,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SearchRoute: typeof SearchRoute
-  SettingsRoute: typeof SettingsRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
   SignupRoute: typeof SignupRoute
   TasksRoute: typeof TasksRoute
   ChatSessionIdRoute: typeof ChatSessionIdRoute
@@ -265,6 +300,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/ai-providers': {
+      id: '/settings/ai-providers'
+      path: '/ai-providers'
+      fullPath: '/settings/ai-providers'
+      preLoaderRoute: typeof SettingsAiProvidersRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/environment-variables': {
+      id: '/settings/environment-variables'
+      path: '/environment-variables'
+      fullPath: '/settings/environment-variables'
+      preLoaderRoute: typeof SettingsEnvironmentVariablesRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/chat/thread/$threadId': {
       id: '/chat/thread/$threadId'
       path: '/chat/thread/$threadId'
@@ -275,6 +331,22 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface SettingsRouteChildren {
+  SettingsAiProvidersRoute: typeof SettingsAiProvidersRoute
+  SettingsEnvironmentVariablesRoute: typeof SettingsEnvironmentVariablesRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsAiProvidersRoute: SettingsAiProvidersRoute,
+  SettingsEnvironmentVariablesRoute: SettingsEnvironmentVariablesRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DeviceRoute: DeviceRoute,
@@ -283,7 +355,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SearchRoute: SearchRoute,
-  SettingsRoute: SettingsRoute,
+  SettingsRoute: SettingsRouteWithChildren,
   SignupRoute: SignupRoute,
   TasksRoute: TasksRoute,
   ChatSessionIdRoute: ChatSessionIdRoute,
