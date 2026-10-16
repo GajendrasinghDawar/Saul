@@ -10,7 +10,7 @@ import {
   Settings,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { SaulMark } from '../../components/SaulBrand'
 import { Button } from '../../components/ui/Button'
 import {
@@ -47,10 +47,10 @@ import { UserMenu } from '../auth/UserMenu'
 import {
   createSession,
   deleteSession,
-  fetchSessions,
   renameSession,
   type SessionItem,
 } from './session-api'
+import { useSessions } from './session-context'
 
 const primaryNavigation = [
   { to: '/search', label: 'Search', icon: Search },
@@ -61,32 +61,10 @@ const primaryNavigation = [
 
 export function SessionSidebar() {
   const { setOpenMobile } = useSidebar()
-  const [sessions, setSessions] = useState<SessionItem[]>([])
+  const { sessions, refresh: loadSessions } = useSessions()
   const [isCreating, setIsCreating] = useState(false)
   const pathname = useRouterState({ select: state => state.location.pathname })
   const navigate = useNavigate()
-
-  const loadSessions = useCallback(async () => {
-    try {
-      const items = await fetchSessions()
-      // Sort by recently updated
-      items.sort((a, b) => b.updated - a.updated)
-      setSessions(items)
-    } catch (e) {
-      console.error(e)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadSessions()
-    const handleChatUpdated = () => void loadSessions()
-    window.addEventListener('chat-updated', handleChatUpdated)
-    window.addEventListener('visibilitychange', handleChatUpdated)
-    return () => {
-      window.removeEventListener('chat-updated', handleChatUpdated)
-      window.removeEventListener('visibilitychange', handleChatUpdated)
-    }
-  }, [loadSessions])
 
   const [renameSessionObj, setRenameSessionObj] = useState<SessionItem | null>(
     null
