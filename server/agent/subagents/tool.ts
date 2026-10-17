@@ -11,24 +11,23 @@ export const subagentTool = defineTool({
   name: 'manage_subagents',
   description:
     'Manage persistent subagents that work in the background. Actions: spawn (name, message), send (name, message; ' +
-    'followUp: true queues it after the current answer instead of steering), stop (name: aborts its current work), ' +
-    'status (name, or all subagents without one). Answers are reported back to you when they arrive.',
+    'followUp: true queues it after the current answer instead of steering), ' +
+    'status (name, or all subagents without one). Use stop_subagent to cancel work. Answers are reported back to you when they arrive.',
   parameters: Type.Object({
     action: Type.Union([
       Type.Literal('spawn'),
       Type.Literal('send'),
-      Type.Literal('stop'),
       Type.Literal('status'),
     ]),
     name: Type.Optional(Type.String()),
     message: Type.Optional(Type.String()),
     followUp: Type.Optional(Type.Boolean()),
   }),
-  replay: 'unsafe',
+  replay: 'safe',
   execute: async (args, api, callContext) => {
     const { action, name, message, followUp } = args
     const reply = (text: string, conversationId?: ConversationId) => ({
-      content: [{ type: 'text' as const, text }],
+      output: [{ type: 'text' as const, text }],
       ...(conversationId === undefined || name === undefined
         ? {}
         : { details: { name, conversationId } }),
@@ -41,12 +40,6 @@ export const subagentTool = defineTool({
     }
 
     if (name === undefined) return reply(`${action} needs a name.`)
-
-    if (action === 'stop') {
-      const res = await SubagentManager.stop(api, callContext, name)
-      if (res.error) return reply(res.error)
-      return reply(`Stopped ${name}.`, res.conversationId)
-    }
 
     if (message === undefined) return reply(`${action} needs a message.`)
 
@@ -72,8 +65,27 @@ export const subagentTool = defineTool({
   },
 })
 
+export const stopSubagentTool = defineTool({
+  name: 'stop_subagent',
+  description:
+    'Stop the named subagent’s current work. The subagent remains available for later messages.',
+  parameters: Type.Object({ name: Type.String() }),
+  // Repeating an already completed abort could cancel newer work. Cancellation
+  // is intentionally separate from replay-safe spawn/send operations.
+  replay: 'unsafe',
+  execute: async ({ name }, api, context) => {
+    const result = await SubagentManager.stop(api, context, name)
+    return {
+      output: [{ type: 'text', text: result.error ?? `Stopped ${name}.` }],
+      ...(result.conversationId === undefined
+        ? {}
+        : { details: { name, conversationId: result.conversationId } }),
+    }
+  },
+})
+
 export const SubagentExtension = defineExtension({
   name: 'subagent-tools',
   tasks: [Anchor, Reporter],
-  tools: [subagentTool],
+  tools: [subagentTool, stopSubagentTool],
 })

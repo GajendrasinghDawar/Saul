@@ -1,4 +1,4 @@
-import { fetchWithCsrf } from '../../lib/api'
+import { fetchWithCsrf, responseError } from '../../lib/api.ts'
 
 export type SessionItem = {
   id: string // The conversation ID from pi-durable
@@ -26,13 +26,57 @@ export async function fetchSessions(): Promise<SessionItem[]> {
   )
 }
 
-export async function createSession(): Promise<string> {
-  const res = await fetchWithCsrf('/api/new-thread', {
-    method: 'POST',
-  })
-  if (!res.ok) throw new Error('Failed to create session')
-  const data = await res.json()
-  return String(data.conversationId)
+async function conversationCommand(
+  userId: string,
+  path: string
+): Promise<string> {
+  const key = `saul-conversation-command:${JSON.stringify([userId, path])}`
+  const requestId = localStorage.getItem(key) ?? crypto.randomUUID()
+  localStorage.setItem(key, requestId)
+  const clear = () => {
+    if (localStorage.getItem(key) === requestId) localStorage.removeItem(key)
+  }
+  for (let attempt = 0; ; attempt++) {
+    let res: Response
+    try {
+      res = await fetchWithCsrf(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId }),
+        signal: AbortSignal.timeout(15_000),
+      })
+    } catch (error) {
+      if (attempt === 0) continue
+      throw error
+    }
+    if (res.status >= 500 && attempt === 0) continue
+    if (!res.ok) {
+      // Authentication/CSRF rejection says nothing about an earlier attempt
+      // whose response was lost. Keep its ID across sign-in and retry.
+      if ([400, 404, 409].includes(res.status)) clear()
+      throw new Error(await responseError(res))
+    }
+    const data = await res.json()
+    const id = data.conversationId ?? data.newConversationId
+    if (!Number.isSafeInteger(Number(id)) || Number(id) < 1)
+      throw new Error('Chat creation was not confirmed. Retry the operation.')
+    clear()
+    return String(id)
+  }
+}
+
+export function createSession(userId: string): Promise<string> {
+  return conversationCommand(userId, '/api/new-thread')
+}
+
+export function forkSession(
+  userId: string,
+  messageId: string
+): Promise<string> {
+  return conversationCommand(
+    userId,
+    `/api/fork/${encodeURIComponent(messageId)}`
+  )
 }
 
 export async function renameSession(id: string, title: string): Promise<void> {

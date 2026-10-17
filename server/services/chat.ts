@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import {
   type ConversationId,
   configure,
+  defineDocFamily,
   type EntryId,
   type Harness,
 } from '@earendil-works/pi-durable'
@@ -21,6 +23,30 @@ import {
   replyPrefix,
   visibleEntry,
 } from './chat-history.ts'
+
+type ConversationReceipt = {
+  operation: 'create' | 'fork'
+  conversationId: ConversationId
+  parentConversationId?: ConversationId
+  entryId?: EntryId
+  title?: string
+  published?: true
+}
+
+const ConversationCommands = defineDocFamily<
+  {
+    receipt?: ConversationReceipt
+  },
+  null
+>({
+  family: true,
+  kind: 'saul.conversation-command',
+  version: 1,
+  scope: 'session',
+  initial: () => ({}),
+})
+
+export class ConversationCommandConflict extends Error {}
 
 export class ChatService {
   harness: Harness
@@ -59,30 +85,74 @@ export class ChatService {
     return await this.createConversation(userId)
   }
 
-  async createConversation(userId: string): Promise<ConversationId> {
-    const model = await this.currentModel()
-    if (!model)
-      throw new AiError(
-        'No default AI model is configured. Ask an administrator to select one.'
-      )
-    const convRecord = await this.harness.commit(async tx => {
-      return tx.createConversation({ ownership: { kind: 'ownerless' } })
-    }, BACKGROUND_CONTEXT)
-
-    await this.harness.commit(async tx => {
-      await configure(tx, convRecord.id, {
+  async createConversation(
+    userId: string,
+    requestId: string = randomUUID()
+  ): Promise<ConversationId> {
+    const key = JSON.stringify([userId, requestId])
+    const receipt = await this.harness.commit(async tx => {
+      const command = await tx.doc(ConversationCommands, key, null)
+      if (command.receipt) {
+        if (command.receipt.operation !== 'create')
+          throw new ConversationCommandConflict(
+            'Request ID already used for another command.'
+          )
+        return { ...command.receipt }
+      }
+      const model = await this.currentModel()
+      if (!model)
+        throw new AiError(
+          'No default AI model is configured. Ask an administrator to select one.'
+        )
+      const conversation = await tx.createConversation({
+        ownership: { kind: 'ownerless' },
+      })
+      await configure(tx, conversation.id, {
         model,
         extensions: {
           add: [LaliExtension, SubagentExtension, ReminderExtension],
         },
       })
+      command.receipt = { operation: 'create', conversationId: conversation.id }
+      return { ...command.receipt }
     }, BACKGROUND_CONTEXT)
+    await this.publishConversation(userId, key, receipt)
+    return receipt.conversationId
+  }
 
-    await db
-      .insert(userConversations)
-      .values({ conversationId: String(convRecord.id), userId })
-
-    return convRecord.id
+  private async publishConversation(
+    userId: string,
+    key: string,
+    receipt: ConversationReceipt
+  ) {
+    // Serialize publishers and reread the receipt, rather than trusting a copy
+    // captured before another request published (and the user deleted) the chat.
+    // The app insert is still not atomic with Pi; retry repairs an interrupted write.
+    await this.harness.commit(async tx => {
+      const command = await tx.doc(ConversationCommands, key, null)
+      if (command.receipt?.published) {
+        if (
+          !(await isConversationOwner(String(receipt.conversationId), userId))
+        )
+          throw new ConversationCommandConflict(
+            'This conversation was deleted.'
+          )
+        return
+      }
+      await db
+        .insert(userConversations)
+        .values({
+          conversationId: String(receipt.conversationId),
+          userId,
+          title: receipt.title,
+        })
+        .onConflictDoNothing()
+      if (!(await isConversationOwner(String(receipt.conversationId), userId)))
+        throw new ConversationCommandConflict(
+          'Conversation ownership does not match.'
+        )
+      if (command.receipt) command.receipt.published = true
+    }, BACKGROUND_CONTEXT)
   }
 
   async submitMessage(
@@ -161,7 +231,11 @@ export class ChatService {
       : undefined
   }
 
-  async forkConversation(messageId: EntryId, userId: string) {
+  async forkConversation(
+    messageId: EntryId,
+    userId: string,
+    requestId: string = randomUUID()
+  ) {
     const entry = await this.harness.commit(async tx => {
       return await tx.entry(messageId)
     }, BACKGROUND_CONTEXT)
@@ -172,18 +246,6 @@ export class ChatService {
     if (!(await isConversationOwner(String(entry.conversationId), userId))) {
       return 'forbidden'
     }
-
-    const parentConv = await this.harness.conversation(
-      entry.conversationId,
-      BACKGROUND_CONTEXT
-    )
-    if (!parentConv) return null
-
-    const thread = await parentConv.fork(
-      messageId,
-      { ownership: { kind: 'ownerless' } },
-      BACKGROUND_CONTEXT
-    )
 
     // Build a title from the forked message content + parent chat name
     const parentRecord = await db
@@ -205,12 +267,37 @@ export class ChatService {
       forkTitle = `Fork: ${parentTitle}`
     }
 
-    await db
-      .insert(userConversations)
-      .values({ conversationId: String(thread.id), userId, title: forkTitle })
+    const key = JSON.stringify([userId, requestId])
+    const receipt = await this.harness.commit(async tx => {
+      const command = await tx.doc(ConversationCommands, key, null)
+      if (command.receipt) {
+        if (
+          command.receipt.operation !== 'fork' ||
+          command.receipt.entryId !== messageId
+        )
+          throw new ConversationCommandConflict(
+            'Request ID already used for another command.'
+          )
+        return { ...command.receipt }
+      }
+      const thread = await tx.forkConversation(
+        entry.conversationId,
+        messageId,
+        { ownership: { kind: 'ownerless' } }
+      )
+      command.receipt = {
+        operation: 'fork',
+        conversationId: thread.id,
+        parentConversationId: entry.conversationId,
+        entryId: messageId,
+        title: forkTitle,
+      }
+      return { ...command.receipt }
+    }, BACKGROUND_CONTEXT)
+    await this.publishConversation(userId, key, receipt)
 
     return {
-      newConversationId: thread.id,
+      newConversationId: receipt.conversationId,
       parentConversationId: entry.conversationId,
     }
   }

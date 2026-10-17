@@ -39,6 +39,10 @@ import { user } from './db/schema.ts'
 export function createApp(dependencies: AppDependencies) {
   const { auth } = dependencies
   const app = express()
+  let harnessReady = true
+  dependencies.harness.subscribeClose(() => {
+    harnessReady = false
+  })
   app.set('trust proxy', 1) // Trust Caddy reverse proxy for rate limiting and IPs
 
   app.use(requestLogging)
@@ -89,6 +93,18 @@ export function createApp(dependencies: AppDependencies) {
 
   // Health check (no auth needed)
   app.get('/health', (_req, res) => res.json({ status: 'ok' }))
+  app.get('/ready', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store')
+    res
+      .status(harnessReady ? 200 : 503)
+      .json({ status: harnessReady ? 'ready' : 'unavailable' })
+  })
+
+  app.use('/api', (_req, res, next) => {
+    if (!harnessReady)
+      return res.status(503).json({ error: 'Agent storage is unavailable.' })
+    next()
+  })
 
   // CSRF token endpoint (no auth needed)
   app.get('/csrf-token', (req, res) => {

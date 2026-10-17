@@ -790,7 +790,7 @@ function SettingsPage() {
                             </button>
                           </div>
                         )}
-                        {provider.id === 'azure-openai-responses' && (
+                        {provider.id === 'azure' && (
                           <AzureConnection
                             key={JSON.stringify(provider.azure)}
                             connection={provider.azure}

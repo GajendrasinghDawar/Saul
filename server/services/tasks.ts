@@ -21,10 +21,22 @@ export class TaskService {
   async getUserTasks(userId: string) {
     const userConvIds = await getUserConversationIds(userId)
 
-    return this.harness.commit(
+    const tasks = await this.harness.commit(
       tx => scanOwnedTasks(tx, userConvIds),
       BACKGROUND_CONTEXT
     )
+    return tasks.map(task => ({
+      id: task.id,
+      kind: task.kind,
+      conversationId: task.conversationId,
+      abortRequested: task.abortRequested,
+      state: {
+        status: task.state.status,
+        ...(task.state.outcome
+          ? { outcome: { status: task.state.outcome.status } }
+          : {}),
+      },
+    }))
   }
 
   async getAttention(userId: string): Promise<AttentionResponse> {

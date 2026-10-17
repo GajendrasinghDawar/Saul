@@ -35,6 +35,7 @@ This repository is an active personal project. Some features need external servi
 - [Server settings](docs/server-settings.md)
 - [Attachment storage and backups](docs/attachments.md)
 - [Pi-Durable libSQL storage trial](docs/pi-libsql-storage.md)
+- [Durable execution reliability](docs/durable-reliability.md)
 
 ## Local setup (Windows PowerShell)
 
@@ -141,7 +142,8 @@ This starts the backend in development mode (`tsx watch server/server.ts`) and V
 
 - Web: `http://localhost:5173`. If this port is busy, use the URL that Vite prints.
 - Health check: `http://localhost:3000/health`.
-- Vite proxies `/api`, `/csrf-token`, and `/health` to `http://localhost:3000`. If you change the backend port, update the proxy too.
+- Agent readiness: `http://localhost:3000/ready`.
+- Vite proxies `/api`, `/csrf-token`, `/health`, and `/ready` to `http://localhost:3000`. If you change the backend port, update the proxy too.
 
 Vite binds to all interfaces. Use a trusted local network. Do not expose this development setup to the public internet.
 

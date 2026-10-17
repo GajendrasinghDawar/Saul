@@ -43,6 +43,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '../../components/ui/sidebar'
+import { useAuthenticatedUserId } from '../auth/AuthGate'
 import { UserMenu } from '../auth/UserMenu'
 import {
   createSession,
@@ -60,6 +61,7 @@ const primaryNavigation = [
 ] as const
 
 export function SessionSidebar() {
+  const userId = useAuthenticatedUserId()
   const { setOpenMobile } = useSidebar()
   const { sessions, refresh: loadSessions } = useSessions()
   const [isCreating, setIsCreating] = useState(false)
@@ -79,7 +81,7 @@ export function SessionSidebar() {
     if (isCreating) return
     setIsCreating(true)
     try {
-      const newId = await createSession()
+      const newId = await createSession(userId)
       await loadSessions()
       navigate({ to: '/chat/$sessionId', params: { sessionId: newId } })
       setOpenMobile(false)

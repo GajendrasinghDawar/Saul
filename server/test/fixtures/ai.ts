@@ -570,7 +570,7 @@ test('AI persistence, native local generation, admin boundaries and live default
   await once(azureApi, 'listening')
   const apiAddress = azureApi.address()
   assert.ok(apiAddress && typeof apiAddress !== 'string')
-  const connectionUrl = `http://127.0.0.1:${apiAddress.port}/api/ai/providers/azure-openai-responses/connection`
+  const connectionUrl = `http://127.0.0.1:${apiAddress.port}/api/ai/providers/azure/connection`
   try {
     assert.equal(process.env.AZURE_OPENAI_BASE_URL, undefined)
     assert.equal(process.env.AZURE_OPENAI_API_KEY, undefined)
@@ -596,11 +596,7 @@ test('AI persistence, native local generation, admin boundaries and live default
     assert.equal((await request('admin', azure)).status, 200)
     const azureLogin = new AiLogins(ai)
     try {
-      const state = azureLogin.start(
-        'azure-openai-responses',
-        'api_key',
-        'admin'
-      )
+      const state = azureLogin.start('azure', 'api_key', 'admin')
       await new Promise(r => setTimeout(r, 10))
       azureLogin.answer(
         state.id,
@@ -613,15 +609,42 @@ test('AI persistence, native local generation, admin boundaries and live default
     } finally {
       azureLogin.close()
     }
+    // Simulate persisted Pi 1.0 provider identifiers, including an encrypted key.
+    await ai.setDefault({ provider: 'azure', modelId: 'gpt-4.1' })
+    const azureCredential = await ai.credentials.read('azure')
+    assert.ok(azureCredential)
+    await ai.credentials.modify(
+      'azure-openai-responses',
+      async () => azureCredential
+    )
+    await ai.credentials.delete('azure')
+    const [saved] = await db
+      .select()
+      .from(secrets)
+      .where(eq(secrets.name, 'ai:config:v1'))
+    const oldConfig = JSON.parse(decryptSetting(saved.name, saved.value))
+    oldConfig.defaultModel.provider = 'azure-openai-responses'
+    await db
+      .update(secrets)
+      .set({ value: encryptSetting(saved.name, JSON.stringify(oldConfig)) })
+      .where(eq(secrets.name, saved.name))
     const restored = new AiManager()
     await restored.load()
+    assert.deepEqual(restored.getDefault(), {
+      provider: 'azure',
+      modelId: 'gpt-4.1',
+    })
+    assert.equal(
+      await restored.credentials.read('azure-openai-responses'),
+      undefined
+    )
     const metadata = await restored.metadata()
     assert.deepEqual(
-      metadata.providers.find(p => p.id === 'azure-openai-responses')?.azure,
+      metadata.providers.find(p => p.id === 'azure')?.azure,
       azure
     )
     assert.ok(!JSON.stringify(metadata).includes('AZURE-UI-CANARY'))
-    const model = restored.models.getModel('azure-openai-responses', 'gpt-4.1')
+    const model = restored.models.getModel('azure', 'gpt-4.1')
     assert.ok(model)
     const result = await restored.models.completeSimple(model, {
       messages: [{ role: 'user', content: 'hello', timestamp: Date.now() }],
@@ -651,14 +674,18 @@ test('AI persistence, native local generation, admin boundaries and live default
       ...azure,
       deployments: { 'gpt-4.1': 'renamed-deployment' },
     })
-    assert.ok(await restored.models.checkAuth('azure-openai-responses'))
+    assert.ok(await restored.models.checkAuth('azure'))
     await restored.setAzure({
       ...azure,
       baseUrl: 'https://different.openai.azure.com/openai/v1',
     })
+    assert.equal(await restored.models.checkAuth('azure'), undefined)
+    const reloaded = new AiManager()
+    await reloaded.load()
     assert.equal(
-      await restored.models.checkAuth('azure-openai-responses'),
-      undefined
+      await reloaded.models.checkAuth('azure'),
+      undefined,
+      'the migrated key must not reappear after endpoint change'
     )
   } finally {
     azureEndpoint.closeAllConnections()
