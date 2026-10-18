@@ -26,7 +26,9 @@ private val DarkColorScheme =
     onSurface = Slate11,
     onSurfaceVariant = Slate10,
     error = Red9,
-    onError = Slate12
+    onError = Slate12,
+    errorContainer = Red3,
+    onErrorContainer = Red12,
   )
 
 @Composable

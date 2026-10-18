@@ -6,10 +6,16 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -45,24 +51,28 @@ internal fun SignInScreen(
   onResetFlow: () -> Unit
 ) {
   Scaffold { innerPadding ->
+    Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
     Column(
       modifier =
-        Modifier.fillMaxSize()
+        Modifier.widthIn(max = 560.dp).fillMaxSize()
           .padding(innerPadding)
           .consumeWindowInsets(innerPadding)
           .verticalScroll(rememberScrollState())
           .padding(24.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-      Text("Lali", style = MaterialTheme.typography.displaySmall)
+      Text("Saul", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary)
+      Text("Your assistant, within reach.", style = MaterialTheme.typography.headlineSmall)
       Text(
-        "Sign in to continue your sessions.",
+        "Continue your conversations and keep an eye on work in progress.",
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
 
-      Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           Text("Gateway", style = MaterialTheme.typography.titleMedium)
           Text(state.gatewayBaseUrl ?: "Not configured", style = MaterialTheme.typography.bodyMedium)
           Text(
@@ -90,7 +100,7 @@ internal fun SignInScreen(
           }
       }
 
-      // Real-time Auth Diagnostics & Live Interactions
+      // The browser owns account authentication; never render the code-bearing URL.
       when (val auth = state.authState) {
         AuthFlowState.Idle -> {
           Button(
@@ -100,28 +110,32 @@ internal fun SignInScreen(
             Text("Sign in with Web")
           }
           Text(
-            "Securely authenticate via your browser.",
+            "Your browser handles sign-in. Approve this device there, then return to Saul. Your password stays in the browser.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
         }
         AuthFlowState.RequestingCode -> {
-          Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              Text("Requesting Device Authorization...", style = MaterialTheme.typography.titleMedium)
-              Text("Contacting Gateway: ${state.gatewayBaseUrl}", style = MaterialTheme.typography.bodySmall)
+          Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+              LinearProgressIndicator(Modifier.fillMaxWidth())
+              Text("Preparing secure sign-in", style = MaterialTheme.typography.titleMedium)
+              Text("Requesting approval for this device. Your browser will open shortly.", style = MaterialTheme.typography.bodyMedium)
             }
           }
         }
         is AuthFlowState.WaitingForApproval -> {
           Card(
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
             colors = androidx.compose.material3.CardDefaults.cardColors(
               containerColor = MaterialTheme.colorScheme.surfaceVariant
             )
           ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-              Text("Approval in Progress", style = MaterialTheme.typography.titleMedium)
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+              Text("Approve this device", style = MaterialTheme.typography.titleMedium)
+              Text("Finish signing in in your browser. Check that this code matches before approving.", style = MaterialTheme.typography.bodyMedium)
               
               Column(
                 modifier = Modifier
@@ -139,15 +153,10 @@ internal fun SignInScreen(
               }
 
               Text(
-                text = "Live Status: ${auth.liveStatus}",
+                text = "Waiting for browser approval. You can return here when you're done.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-              )
-
-              Text(
-                text = "Target URL: ${auth.verificationUri}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
               )
 
               androidx.compose.foundation.layout.Row(
@@ -161,7 +170,7 @@ internal fun SignInScreen(
                   },
                   modifier = Modifier.weight(1f)
                 ) {
-                  Text("Reopen Web")
+                  Text("Open browser")
                 }
 
                 OutlinedButton(
@@ -177,25 +186,27 @@ internal fun SignInScreen(
         is AuthFlowState.Success -> {
           Card(
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
             colors = androidx.compose.material3.CardDefaults.cardColors(
               containerColor = MaterialTheme.colorScheme.primaryContainer
             )
           ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              Text("Authenticated!", style = MaterialTheme.typography.titleMedium)
-              Text("Session active. Navigating...", style = MaterialTheme.typography.bodySmall)
+              Text("You're signed in", style = MaterialTheme.typography.titleMedium)
+              Text("Opening your workspace…", style = MaterialTheme.typography.bodyMedium)
             }
           }
         }
         is AuthFlowState.Error -> {
           Card(
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
             colors = androidx.compose.material3.CardDefaults.cardColors(
               containerColor = MaterialTheme.colorScheme.errorContainer
             )
           ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              Text("Authentication Error", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+              Text("Couldn't complete sign-in", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
               Text(auth.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
               Button(onClick = onBeginSignIn, modifier = Modifier.fillMaxWidth()) {
                 Text("Try Again")
@@ -204,6 +215,7 @@ internal fun SignInScreen(
           }
         }
       }
+    }
     }
   }
 }

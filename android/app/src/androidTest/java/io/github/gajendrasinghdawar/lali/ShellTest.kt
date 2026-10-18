@@ -38,10 +38,23 @@ class ShellTest {
         }
         compose.onNodeWithText("Tasks").performClick()
         assertEquals(ShellDestination.Tasks, selection)
+        compose.onNodeWithText("Sign Out").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Account menu").performClick()
         compose.onNodeWithText("Sign Out").performClick()
         assertEquals(true, signedOut)
         compose.onNodeWithText("Online").assertExists()
         val file = File(compose.activity.getExternalFilesDir(null), "shell.png")
         file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test fun backActionIsAccessible() {
+        var backed = false
+        compose.setContent { LaliTheme {
+            AppShell(ShellDestination.Conversations, {}, {}, title = "Weekend plans", onBack = { backed = true }) {
+                Text("Transcript")
+            }
+        } }
+        compose.onNodeWithContentDescription("Back").performClick()
+        assertEquals(true, backed)
     }
 }

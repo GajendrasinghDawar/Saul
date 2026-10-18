@@ -15,6 +15,12 @@ val NotoSans = FontFamily(
 
 val Typography =
   Typography(
+    displayLarge = TextStyle(fontFamily = NotoSans, fontWeight = FontWeight.SemiBold, fontSize = 48.sp, lineHeight = 56.sp),
+    displayMedium = TextStyle(fontFamily = NotoSans, fontWeight = FontWeight.SemiBold, fontSize = 40.sp, lineHeight = 48.sp),
+    displaySmall = TextStyle(fontFamily = NotoSans, fontWeight = FontWeight.SemiBold, fontSize = 32.sp, lineHeight = 40.sp),
+    headlineLarge = TextStyle(fontFamily = NotoSans, fontWeight = FontWeight.SemiBold, fontSize = 32.sp, lineHeight = 40.sp),
+    headlineMedium = TextStyle(fontFamily = NotoSans, fontWeight = FontWeight.SemiBold, fontSize = 28.sp, lineHeight = 36.sp),
+    headlineSmall = TextStyle(fontFamily = NotoSans, fontWeight = FontWeight.SemiBold, fontSize = 24.sp, lineHeight = 32.sp),
     bodyLarge =
       TextStyle(
         fontFamily = NotoSans,
@@ -57,5 +63,6 @@ val Typography =
       ),
     labelLarge = TextStyle(fontFamily = NotoSans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
     labelMedium = TextStyle(fontFamily = NotoSans, fontSize = 12.sp),
+    labelSmall = TextStyle(fontFamily = NotoSans, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 16.sp),
     bodySmall = TextStyle(fontFamily = NotoSans, fontSize = 12.sp, lineHeight = 18.sp),
   )

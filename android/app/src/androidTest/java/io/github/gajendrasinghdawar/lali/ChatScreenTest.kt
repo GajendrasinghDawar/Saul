@@ -18,6 +18,44 @@ import org.junit.*
 
 class ChatScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun streamingPreservesReadingPositionAndLatestActionReturnsToBottom() {
+        val messages = (0 until 40).map { index ->
+            ChatMessage("message-$index", MessageRole.Assistant, "Reply $index\n\nSome context to read.")
+        }
+        val state = mutableStateOf(ChatUiState(ConversationState(ChatProjection(messages), ConnectionStatus.Online)))
+        compose.setContent { LaliTheme { ChatScreen(state.value) } }
+        val transcript = compose.onNodeWithTag("chat-transcript")
+        compose.onNodeWithText("Reply 39", substring = true).assertIsDisplayed()
+        transcript.performScrollToIndex(0)
+        compose.onNodeWithText("Reply 0", substring = true).assertIsDisplayed()
+        val position = transcript.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+
+        repeat(3) { snapshot ->
+            compose.runOnIdle {
+                state.value = state.value.copy(conversation = state.value.conversation.copy(
+                    projection = ChatProjection(messages.dropLast(1) + messages.last().copy(text = "Streaming snapshot $snapshot", complete = false))
+                ))
+            }
+            compose.onNodeWithText("Reply 0", substring = true).assertIsDisplayed()
+            org.junit.Assert.assertEquals(position,
+                transcript.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value(), 0.01f)
+        }
+        compose.runOnIdle {
+            state.value = state.value.copy(conversation = state.value.conversation.copy(
+                projection = ChatProjection(state.value.conversation.projection.messages + ChatMessage("new", MessageRole.Assistant, "Newest reply"))
+            ))
+        }
+        compose.onNodeWithText("Reply 0", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Latest messages").performClick()
+        compose.onNodeWithText("Newest reply").assertIsDisplayed()
+        compose.runOnIdle {
+            state.value = state.value.copy(conversation = state.value.conversation.copy(
+                projection = ChatProjection(state.value.conversation.projection.messages + ChatMessage("newer", MessageRole.Assistant, "Followed reply"))
+            ))
+        }
+        compose.onNodeWithText("Followed reply").assertIsDisplayed()
+    }
+
     @Test fun attachmentDraftStatesAndTranscriptMetadata() {
         val file = Attachment("file-1", "notes.md", "text/markdown", 128)
         val state = mutableStateOf(ChatUiState(
@@ -62,6 +100,12 @@ class ChatScreenTest {
         capture("chat-thinking.png")
         compose.onNodeWithText("Hide thinking").performClick()
         compose.onNodeWithText("Search the notes before answering.").assertDoesNotExist()
+        compose.onNodeWithText("{\"query\":\"weekend\"}").assertDoesNotExist()
+        compose.onNodeWithText("search").performClick()
+        compose.onNodeWithText("{\"query\":\"weekend\"}").assertIsDisplayed()
+        capture("chat-tool-details.png")
+        compose.onNodeWithText("search").performClick()
+        compose.onNodeWithText("{\"query\":\"weekend\"}").assertDoesNotExist()
         val code = compose.onNodeWithText("val result", substring = true)
         code.performSemanticsAction(SemanticsActions.ScrollBy) { scroll -> scroll(500f, 0f) }
         compose.waitForIdle()

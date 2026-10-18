@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import io.github.gajendrasinghdawar.lali.core.auth.TokenRepository
 import io.github.gajendrasinghdawar.lali.theme.LaliTheme
 import java.io.File
@@ -35,13 +36,18 @@ class GatewayJourneyTest {
             try {
                 compose.setContent { LaliTheme { MainNavigation(container) } }
                 waitForText("Fixture chat")
+                compose.onNodeWithText("Offline").assertDoesNotExist()
+                capture("conversations-journey.png")
                 compose.onNodeWithText("Fixture chat").performClick()
-                compose.waitUntil(10_000) { compose.onAllNodesWithText("Online").fetchSemanticsNodes().size == 2 }
+                compose.waitUntil(10_000) { compose.onAllNodesWithText("Online").fetchSemanticsNodes().size == 1 }
                 capture("chat-empty.png")
-                compose.onNode(hasSetTextAction()).performTextInput("Explain SSE briefly")
-                compose.onNodeWithText("Send").performClick()
+                compose.onNode(hasSetTextAction()).performClick().performTextInput("Explain SSE briefly")
+                compose.waitUntil(10_000) { compose.onAllNodes(hasText("Send") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+                capture("chat-composing.png")
+                compose.onNodeWithText("Send").assertIsDisplayed().performClick()
                 waitForText("Snapshots replace the current transcript.")
                 compose.onAllNodesWithText("Explain SSE briefly").assertCountEquals(1)
+                closeSoftKeyboard()
                 capture("chat-journey.png")
                 compose.onNodeWithText("Tasks").performClick()
                 waitForText("Prepare a daily digest")
@@ -56,12 +62,13 @@ class GatewayJourneyTest {
                 waitForText("user@example.test")
                 capture("settings.png")
                 gateway.failSignOut = true
-                compose.onNodeWithText("Sign out of this device").performClick()
+                compose.onNodeWithText("Sign out of this device").performScrollTo().performClick()
                 waitForText("Could not revoke this session. Check your connection and retry sign-out.")
                 assertNotNull(container.tokenRepository.tokenFlow.value)
+                compose.onNodeWithText("Sign out of this device").performScrollTo().assertIsDisplayed()
                 capture("settings-error.png")
                 gateway.failSignOut = false
-                compose.onNodeWithText("Sign out of this device").performClick()
+                compose.onNodeWithText("Sign out of this device").performScrollTo().performClick()
                 waitForText("Sign in with Web")
                 assertTrue(gateway.revoked)
                 assertNull(container.tokenRepository.tokenFlow.value)

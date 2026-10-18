@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.view.WindowManager
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -13,6 +14,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -39,23 +43,32 @@ fun SettingsScreen(state: SettingsUiState, onRefresh: () -> Unit, onSignOut: () 
     val enabled = !state.loading && !state.working && !state.signingOut && !state.denied
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(Modifier.widthIn(max = 896.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Account", style = MaterialTheme.typography.titleMedium)
+            Text("Your workspace", style = MaterialTheme.typography.headlineSmall)
+            Text("Manage your account, Gateway and this device.", style = MaterialTheme.typography.bodyMedium, color = Slate11)
             if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            state.account?.let { account ->
-                Text(account.name, style = MaterialTheme.typography.titleSmall)
-                Text(account.email, color = Slate11)
+            SettingsSection("Account") {
+                state.account?.let { account ->
+                    Text(account.name, style = MaterialTheme.typography.titleMedium)
+                    Text(account.email, color = Slate11)
+                }
+                LaliSecondaryButton(onRefresh, enabled = enabled || state.denied && !state.loading && !state.signingOut && !state.working, text = "Refresh account")
             }
-            HorizontalDivider()
-            Text("Gateway", style = MaterialTheme.typography.titleSmall)
-            Text(state.gatewayUrl, color = Slate11)
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            state.notice?.let { Text(it, color = Slate11) }
+            SettingsSection("Gateway") {
+                Text(state.gatewayUrl, color = Slate11, style = MaterialTheme.typography.bodyMedium)
+                Text("Your conversations and tasks are managed by this server.", color = Slate11, style = MaterialTheme.typography.bodySmall)
+            }
+            state.error?.let {
+                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp)) {
+                    Text(it, Modifier.fillMaxWidth().padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.onErrorContainer)
+                }
+            }
+            state.notice?.let { Text(it, color = Slate11, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
             if (state.account?.role == "admin" && !state.denied) {
-                HorizontalDivider()
-                Text("Server settings", style = MaterialTheme.typography.titleMedium)
+                SettingsSection("Server settings") {
                 Text("Secrets are never displayed. Restart-required changes must be applied by the server administrator.", color = Slate11, style = MaterialTheme.typography.bodySmall)
                 if (state.working) LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.settings.forEach { setting ->
+                    HorizontalDivider()
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(setting.name, style = MaterialTheme.typography.titleSmall)
                         Text(if (setting.secret) { if (setting.isSet) "Secret set" else "Secret not set" } else setting.value ?: "Not set", color = Slate11)
@@ -65,18 +78,30 @@ fun SettingsScreen(state: SettingsUiState, onRefresh: () -> Unit, onSignOut: () 
                             LaliDangerButton({ deleting = true; editing = setting }, enabled = enabled && setting.isSet, text = "Delete")
                         }
                     }
-                    HorizontalDivider()
+                }
                 }
             }
-            LaliSecondaryButton(onRefresh, enabled = enabled || state.denied && !state.loading && !state.signingOut && !state.working, text = "Refresh account")
-            Text("Signing out revokes this session and removes the credential from this device.", style = MaterialTheme.typography.bodySmall, color = Slate11)
-            LaliDangerButton(onSignOut, enabled = !state.signingOut, text = if (state.signingOut) "Signing out" else "Sign out of this device")
+            SettingsSection("This device") {
+                Text("Signing out revokes this session and removes the credential from this device.", style = MaterialTheme.typography.bodyMedium, color = Slate11)
+                LaliDangerButton(onSignOut, enabled = !state.signingOut, text = if (state.signingOut) "Signing out" else "Sign out of this device")
+            }
         }
     }
     editing?.let { setting ->
         SettingDialog(setting, deleting, state.working, state.error,
             onDismiss = { editing = null },
             onSubmit = { value -> if (deleting) onDelete(setting.name, value) else onSave(setting.name, value) })
+    }
+}
+
+@Composable
+private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            content()
+        }
     }
 }
 

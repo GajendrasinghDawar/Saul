@@ -46,7 +46,7 @@ fun MainNavigation(container: AppContainer) {
                 ShellDestination.Settings -> Settings
             })
         }, { stack.clear(); stack.add(Settings); signOutRequested = true }, title = if (current is Chat) "Chat" else selected.title,
-            connection = connection, onBack = if (current is Chat) ({ stack.removeLastOrNull() }) else null) {
+            connection = connection.takeIf { current is Chat }, onBack = if (current is Chat) ({ stack.removeLastOrNull() }) else null) {
             NavDisplay(backStack = stack, onBack = { if (stack.size > 1) stack.removeLastOrNull() },
                 entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator(), rememberViewModelStoreNavEntryDecorator()),
                 entryProvider = entryProvider {
