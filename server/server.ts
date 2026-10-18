@@ -12,6 +12,14 @@ async function startServer() {
   const { models } = ai
   const attachments = setupAttachments()
   const harness = await setupDurableHarness(models, attachments)
+  // A failed storage closes Pi permanently. Exit so the process supervisor can
+  // reopen it from durable state; never keep serving with a dead harness.
+  void harness.closed.then(end => {
+    if (end.reason === 'failed') {
+      logger.error('durable.failed', { category: errorCategory(end.error) })
+      process.exit(1)
+    }
+  })
 
   const app = createApp({
     harness,

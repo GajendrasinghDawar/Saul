@@ -132,7 +132,7 @@ export const scheduleReminderTool = defineTool({
     }, callContext)
 
     return {
-      content: [
+      output: [
         {
           type: 'text',
           text: `Reminder scheduled! I will remind you about "${args.message}" in ${args.delaySeconds} seconds.`,
@@ -160,10 +160,10 @@ export const manageRemindersTool = defineTool({
       )
 
       if (reminders.length === 0)
-        return { content: [{ type: 'text', text: 'No active reminders.' }] }
+        return { output: [{ type: 'text', text: 'No active reminders.' }] }
 
       return {
-        content: [
+        output: [
           {
             type: 'text',
             text: `Active reminders:\n${reminders

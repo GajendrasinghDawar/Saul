@@ -307,7 +307,7 @@ function provider(c: Custom) {
 export class AiManager {
   readonly credentials = new EncryptedCredentialStore()
   readonly models = builtinModels({ credentials: this.credentials })
-  private azureProvider = this.models.getProvider('azure-openai-responses')
+  private azureProvider = this.models.getProvider('azure')
   private builtins = new Set(this.models.getProviders().map(p => p.id))
   private queue = new SerialQueue()
   private config: Config = {
@@ -333,6 +333,16 @@ export class AiManager {
     })
   async load() {
     await this.credentials.load()
+    // Pi 1.2 renamed the built-in provider; migrate encrypted credentials rather
+    // than adding a second provider alias or requiring a new login.
+    const oldAzureCredential = await this.credentials.read(
+      'azure-openai-responses'
+    )
+    if (oldAzureCredential && !(await this.credentials.read('azure'))) {
+      await this.credentials.modify('azure', async () => oldAzureCredential)
+    }
+    if (oldAzureCredential)
+      await this.credentials.delete('azure-openai-responses')
     const rows = await db
       .select()
       .from(secrets)
@@ -352,6 +362,10 @@ export class AiManager {
           return validateCustom(p.id, p)
         })
         if (c.azure) c.azure = this.validateAzure(c.azure)
+        if (c.defaultModel?.provider === 'azure-openai-responses') {
+          c.defaultModel.provider = 'azure'
+          await save(configName, c)
+        }
         this.config = c
       } catch {
         throw new AiError(
@@ -362,7 +376,7 @@ export class AiManager {
     for (const c of this.config.providers) this.models.setProvider(provider(c))
     const azureModel = process.env.AZURE_OPENAI_MODEL
     if (azureModel) {
-      const p = this.models.getProvider('azure-openai-responses')
+      const p = this.models.getProvider('azure')
       if (p && !this.models.getModel(p.id, azureModel)) {
         const m: Model<Api> = {
           id: azureModel,
@@ -388,8 +402,7 @@ export class AiManager {
     if (this.config.azure) this.applyAzure(this.config.azure)
     if (!rows[0]) {
       const providerId =
-        process.env.SAUL_AI_PROVIDER ??
-        (azureModel ? 'azure-openai-responses' : undefined)
+        process.env.SAUL_AI_PROVIDER ?? (azureModel ? 'azure' : undefined)
       const modelId = process.env.SAUL_AI_MODEL ?? azureModel
       if (providerId && modelId)
         await this.setDefault({ provider: providerId, modelId })
@@ -410,7 +423,7 @@ export class AiManager {
     const deployments: Record<string, string> = {}
     for (const [id, name] of Object.entries(v.deployments)) {
       if (
-        (!this.models.getModel('azure-openai-responses', id) &&
+        (!this.models.getModel('azure', id) &&
           id !== process.env.AZURE_OPENAI_MODEL) ||
         !text(name) ||
         /[,=]/.test(id + name)
@@ -425,7 +438,7 @@ export class AiManager {
     return { baseUrl: v.baseUrl, apiVersion: v.apiVersion, deployments }
   }
   private applyAzure(connection: AzureConnection) {
-    const p = this.models.getProvider('azure-openai-responses')
+    const p = this.models.getProvider('azure')
     const apiKey = this.azureProvider?.auth.apiKey
     if (!p || !apiKey) throw new AiError('Azure provider is unavailable.')
     this.models.setProvider({
@@ -466,7 +479,7 @@ export class AiManager {
           ? `https://${process.env.AZURE_OPENAI_RESOURCE_NAME}.openai.azure.com/openai/v1`
           : undefined)
       if (previousUrl && previousUrl !== azure.baseUrl)
-        await this.credentials.delete('azure-openai-responses')
+        await this.credentials.delete('azure')
       const next = { ...this.config, azure }
       await save(configName, next)
       this.applyAzure(azure)
@@ -500,9 +513,7 @@ export class AiManager {
             ...(c
               ? { baseUrl: c.baseUrl, api: c.api, keyless: c.keyless }
               : {}),
-            ...(p.id === 'azure-openai-responses'
-              ? { azure: this.config.azure ?? null }
-              : {}),
+            ...(p.id === 'azure' ? { azure: this.config.azure ?? null } : {}),
           }
         })
       )

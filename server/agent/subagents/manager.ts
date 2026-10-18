@@ -51,16 +51,17 @@ export const SubagentManager = {
     name: string,
     message: string
   ) {
-    const registry = (await api.snapshot(
-      Subagents,
-      api.conversationId,
-      callContext
-    )) ?? { agents: {} as Record<string, Subagent> }
-    if (Object.hasOwn(registry.agents, name))
-      return { error: `${name} already exists; use send.` }
-
-    await api.commit(async (tx: Tx) => {
+    return api.commit(async (tx: Tx) => {
       const state = await tx.doc(Subagents, api.conversationId)
+      // The reporter and registry entry are committed together. Its key is the
+      // tool task, not the name: a different spawn must still reject that name.
+      if (Object.hasOwn(state.reporters, String(api.taskId)))
+        return {
+          success: true,
+          conversationId: state.agents[name].conversationId,
+        }
+      if (Object.hasOwn(state.agents, name))
+        return { error: `${name} already exists; use send.` }
       const background = {
         ownership: { kind: 'conversation' as const },
         background: true,
@@ -82,17 +83,13 @@ export const SubagentManager = {
         message,
         followUp: false,
       }
-      state.reporters[api.taskId as unknown as string] = await tx.createTask(
+      state.reporters[String(api.taskId)] = await tx.createTask(
         Reporter,
         input,
         background
       )
+      return { success: true, conversationId: child.id }
     }, callContext)
-
-    const current = (
-      await api.snapshot(Subagents, api.conversationId, callContext)
-    )?.agents[name]
-    return { success: true, conversationId: current?.conversationId }
   },
 
   async send(
@@ -102,34 +99,31 @@ export const SubagentManager = {
     message: string,
     followUp?: boolean
   ) {
-    const registry = (await api.snapshot(
-      Subagents,
-      api.conversationId,
-      callContext
-    )) ?? { agents: {} as Record<string, Subagent> }
-    const agent = registry.agents[name]
-    if (!agent) return { error: `No subagent named ${name}.` }
-
-    await api.commit(async (tx: Tx) => {
+    return api.commit(async (tx: Tx) => {
       const state = await tx.doc(Subagents, api.conversationId)
+      const agent = Object.hasOwn(state.agents, name)
+        ? state.agents[name]
+        : undefined
+      if (!agent) return { error: `No subagent named ${name}.` }
+      if (Object.hasOwn(state.reporters, String(api.taskId)))
+        return { success: true, conversationId: agent.conversationId }
       const background = {
         ownership: { kind: 'conversation' as const },
         background: true,
       } as const
-      const conversationId = state.agents[name]?.conversationId
+      const conversationId = agent.conversationId
       const input = {
         name,
         conversationId,
         message,
         followUp: followUp === true,
       }
-      state.reporters[api.taskId as unknown as string] = await tx.createTask(
+      state.reporters[String(api.taskId)] = await tx.createTask(
         Reporter,
         input,
         background
       )
+      return { success: true, conversationId }
     }, callContext)
-
-    return { success: true, conversationId: agent.conversationId }
   },
 }

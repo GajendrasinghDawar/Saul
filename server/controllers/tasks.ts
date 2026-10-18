@@ -1,11 +1,70 @@
+import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import type { Request, Response } from 'express'
 import type { AppDependencies } from '../app.ts'
+import { errorCategory, logger } from '../logger.ts'
 import { TaskService } from '../services/tasks.ts'
 
 export function createTasksController({ harness }: AppDependencies) {
   const taskService = new TaskService(harness)
 
   return {
+    async streamTasks(_req: Request, res: Response) {
+      const watch = await harness.watchTaskGraph(BACKGROUND_CONTEXT)
+      if (res.destroyed) {
+        await watch.stop()
+        return
+      }
+      res.setHeader('Content-Type', 'text/event-stream')
+      res.setHeader('Cache-Control', 'no-cache, no-transform')
+      res.setHeader('X-Accel-Buffering', 'no')
+      res.flushHeaders()
+      let previous = ''
+      const heartbeat = setInterval(() => {
+        if (!res.destroyed && !res.writableEnded && res.writableLength === 0)
+          res.write(': keepalive\n\n')
+      }, 15_000)
+      const close = () => {
+        clearInterval(heartbeat)
+        void watch.stop()
+      }
+      res.once('close', close)
+      const send = async () => {
+        // Recheck app ownership for every snapshot; never broadcast the session-wide graph.
+        const message = JSON.stringify({
+          tasks: await taskService.getUserTasks(String(res.locals.userId)),
+        })
+        if (res.destroyed || res.writableEnded || message === previous) return
+        previous = message
+        if (!res.write(`data: ${message}\n\n`)) {
+          await new Promise<void>(resolve => {
+            const done = () => {
+              res.off('drain', done)
+              res.off('close', done)
+              resolve()
+            }
+            res.once('drain', done)
+            res.once('close', done)
+          })
+        }
+      }
+      void watch.closed.then(end => {
+        clearInterval(heartbeat)
+        if (end.reason === 'listener_error')
+          logger.error('tasks.stream_failed', {
+            category: errorCategory(end.error),
+          })
+        res.end()
+      })
+      try {
+        await send()
+        watch.start(send)
+      } catch (error) {
+        logger.error('tasks.stream_failed', { category: errorCategory(error) })
+        close()
+        res.end()
+      }
+    },
+
     async listTasks(_req: Request, res: Response) {
       const userId = res.locals.userId
       const tasks = await taskService.getUserTasks(userId)

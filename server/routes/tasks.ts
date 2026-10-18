@@ -6,6 +6,8 @@ export function createTasksRouter(dependencies: AppDependencies) {
   const router = Router()
   const controller = createTasksController(dependencies)
 
+  router.get('/stream', controller.streamTasks)
+
   // List all tasks belonging to the user
   router.get('/', controller.listTasks)
 

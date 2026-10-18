@@ -32,32 +32,18 @@ function TasksPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const controller = new AbortController()
-    const loadTasks = async () => {
-      try {
-        const res = await fetch('/api/tasks', {
-          signal: controller.signal,
-          cache: 'no-store',
-        })
-        if (!res.ok) throw new Error('Tasks are unavailable. Please try again.')
-        const data = await res.json()
-        if (!controller.signal.aborted && data.tasks) {
-          setTasks(data.tasks)
-          setError('')
-        }
-      } catch (e) {
-        if (!controller.signal.aborted)
-          setError(e instanceof Error ? e.message : 'Tasks are unavailable.')
-      } finally {
-        if (!controller.signal.aborted) setLoading(false)
-      }
+    const stream = new EventSource('/api/tasks/stream')
+    stream.onmessage = event => {
+      const data = JSON.parse(event.data) as { tasks: Task[] }
+      setTasks(data.tasks)
+      setError('')
+      setLoading(false)
     }
-    void loadTasks()
-    const interval = setInterval(loadTasks, 2000)
-    return () => {
-      controller.abort()
-      clearInterval(interval)
+    stream.onerror = () => {
+      setError('Live task updates disconnected. Reconnecting...')
+      setLoading(false)
     }
+    return () => stream.close()
   }, [])
 
   return (

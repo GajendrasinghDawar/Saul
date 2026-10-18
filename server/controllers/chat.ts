@@ -12,8 +12,12 @@ import { db } from '../db/index.ts'
 import { userConversations } from '../db/schema.ts'
 import { AiError } from '../services/ai.ts'
 import { AttachmentError } from '../services/attachments.ts'
-import { ChatService } from '../services/chat.ts'
+import { ChatService, ConversationCommandConflict } from '../services/chat.ts'
 import { resolveReply, searchHistory } from '../services/chat-history.ts'
+
+function validRequestId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value)
+}
 
 export function createChatController({
   harness,
@@ -52,11 +56,7 @@ export function createChatController({
       ) {
         return res.status(400).json({ error: 'Invalid conversation ID.' })
       }
-      if (
-        requestId !== undefined &&
-        (typeof requestId !== 'string' ||
-          !/^[A-Za-z0-9_-]{1,128}$/.test(requestId))
-      ) {
+      if (requestId !== undefined && !validRequestId(requestId)) {
         return res.status(400).json({ error: 'Invalid submission ID.' })
       }
       if (
@@ -225,36 +225,66 @@ export function createChatController({
       return res.json({ message })
     },
 
-    async newThread(_req: Request, res: Response) {
+    async newThread(req: Request, res: Response) {
+      const requestId = req.body?.requestId
+      if (requestId !== undefined && !validRequestId(requestId))
+        return res.status(400).json({ error: 'Invalid command ID.' })
       const userId = res.locals.userId
       try {
-        const conversationId = await chatService.createConversation(userId)
+        const conversationId = await chatService.createConversation(
+          userId,
+          requestId
+        )
         res.json({ success: true, conversationId })
-      } catch {
-        res.status(409).json({
-          error:
-            'No default AI model is available. Ask an administrator to configure one.',
+      } catch (error) {
+        const conflict =
+          error instanceof AiError ||
+          error instanceof ConversationCommandConflict
+        res.status(conflict ? 409 : 500).json({
+          error: conflict
+            ? error.message
+            : 'Could not confirm chat creation. Retry with the same command ID.',
         })
       }
     },
 
     async forkThread(req: Request, res: Response) {
+      const requestId = req.body?.requestId
+      if (requestId !== undefined && !validRequestId(requestId))
+        return res.status(400).json({ error: 'Invalid command ID.' })
       const messageIdNum = Number(req.params.messageId) as EntryId
+      if (!Number.isSafeInteger(messageIdNum) || messageIdNum < 1)
+        return res.status(400).json({ error: 'Invalid message ID.' })
       const userId = res.locals.userId
 
-      const forked = await chatService.forkConversation(messageIdNum, userId)
-      if (forked === 'forbidden') {
-        return res
-          .status(403)
-          .json({ error: 'Forbidden: Not conversation owner' })
-      }
-      if (!forked) {
-        return res
-          .status(404)
-          .json({ error: 'Message or parent conversation not found' })
-      }
+      try {
+        const forked = await chatService.forkConversation(
+          messageIdNum,
+          userId,
+          requestId
+        )
+        if (forked === 'forbidden') {
+          return res
+            .status(403)
+            .json({ error: 'Forbidden: Not conversation owner' })
+        }
+        if (!forked) {
+          return res
+            .status(404)
+            .json({ error: 'Message or parent conversation not found' })
+        }
 
-      res.json({ success: true, newConversationId: forked.newConversationId })
+        res.json({ success: true, newConversationId: forked.newConversationId })
+      } catch (error) {
+        res
+          .status(error instanceof ConversationCommandConflict ? 409 : 500)
+          .json({
+            error:
+              error instanceof ConversationCommandConflict
+                ? error.message
+                : 'Could not confirm chat fork. Retry with the same command ID.',
+          })
+      }
     },
 
     async streamConversation(req: Request, res: Response) {

@@ -3,12 +3,15 @@ import { GitBranch, Hash, Send } from 'lucide-react'
 import type { FormEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SaulMark } from '../components/SaulBrand'
+import { useAuthenticatedUserId } from '../features/auth/AuthGate'
+import { createSession, forkSession } from '../features/sessions/session-api'
 
 export const Route = createFileRoute('/chat/thread/$threadId')({
   component: ChatTab,
 })
 
 function ChatTab() {
+  const userId = useAuthenticatedUserId()
   const { threadId } = Route.useParams()
   const navigate = useNavigate({ from: Route.fullPath })
   const activeThreadId = Number(threadId)
@@ -90,15 +93,14 @@ function ChatTab() {
     )
       return
     try {
-      const res = await fetch(`/api/fork/${messageId}`, { method: 'POST' })
-      const data = await res.json()
+      const newConversationId = await forkSession(userId, messageId)
       alert(
-        `Forked successfully! Switch to thread #${data.newConversationId} in the sidebar.`
+        `Forked successfully! Switch to thread #${newConversationId} in the sidebar.`
       )
       fetchThreads() // Refresh sidebar
       navigate({
         to: '/chat/thread/$threadId',
-        params: { threadId: String(data.newConversationId) },
+        params: { threadId: newConversationId },
       })
     } catch (_e) {
       alert('Fork failed')
@@ -107,15 +109,12 @@ function ChatTab() {
 
   const startNewThread = async () => {
     try {
-      const res = await fetch('/api/new-thread', { method: 'POST' })
-      const data = await res.json()
-      if (data.success) {
-        fetchThreads()
-        navigate({
-          to: '/chat/thread/$threadId',
-          params: { threadId: String(data.conversationId) },
-        })
-      }
+      const conversationId = await createSession(userId)
+      fetchThreads()
+      navigate({
+        to: '/chat/thread/$threadId',
+        params: { threadId: conversationId },
+      })
     } catch (_e) {
       alert('Failed to start new thread')
     }

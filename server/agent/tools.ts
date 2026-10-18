@@ -38,7 +38,7 @@ export const saveTodoTool = defineTool({
     await saveTodo(String(api.taskId), userId, args.task)
     api.output(`Saved TODO: ${args.task}\n`)
     return {
-      content: [{ type: 'text', text: `Success: Saved "${args.task}"` }],
+      output: [{ type: 'text', text: `Success: Saved "${args.task}"` }],
     }
   },
 })
@@ -89,7 +89,7 @@ export const clearTodosTool = defineTool({
         throw new Error('Approval wait did not complete.')
       if (receipt.state.outcome.result === 'rejected')
         return {
-          content: [
+          output: [
             {
               type: 'text',
               text: 'The user rejected clearing todos. No todos were changed. Continue without performing this action.',
@@ -99,7 +99,7 @@ export const clearTodosTool = defineTool({
     }
     await clearTodos(userId, String(api.conversationId), proposalId)
     api.output(`Cleared all pending todos\n`)
-    return { content: [{ type: 'text', text: 'Success: Cleared all todos.' }] }
+    return { output: [{ type: 'text', text: 'Success: Cleared all todos.' }] }
   },
 })
 
@@ -120,7 +120,7 @@ export const sendDigestEmailTool = defineTool({
       }
       api.output(`[Mock Email] ${args.body}\n`)
       return {
-        content: [{ type: 'text', text: 'Email sent successfully (mocked).' }],
+        output: [{ type: 'text', text: 'Email sent successfully (mocked).' }],
       }
     }
 
@@ -138,7 +138,7 @@ export const sendDigestEmailTool = defineTool({
     if (error) throw new Error(error.message)
     api.output(`Sent email ID: ${data?.id}\n`)
     return {
-      content: [
+      output: [
         { type: 'text', text: `Email sent successfully! ID: ${data?.id}` },
       ],
     }

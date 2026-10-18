@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { type Attachment, fetchWithCsrf } from '../../lib/api'
+import type { Attachment } from '../../lib/api'
+import { useAuthenticatedUserId } from '../auth/AuthGate'
+import { forkSession } from '../sessions/session-api'
 import type { ComposerReply } from './Composer'
 import { type ChatView, projectChatView } from './chat-view'
 import { mergeDeliveryMessages } from './delivery-messages'
@@ -50,6 +52,7 @@ type StreamEvent = {
 }
 
 export function useChatSession(sessionId: string) {
+  const userId = useAuthenticatedUserId()
   const [canonicalMessages, setCanonicalMessages] = useState<Message[]>([])
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] =
@@ -132,13 +135,9 @@ export function useChatSession(sessionId: string) {
     }
   }
   const forkMessage = async (messageId: string) => {
-    const response = await fetchWithCsrf(`/api/fork/${messageId}`, {
-      method: 'POST',
-    })
-    if (!response.ok) throw new Error('Failed to fork conversation')
-    const data = (await response.json()) as { newConversationId: string }
+    const newConversationId = await forkSession(userId, messageId)
     window.dispatchEvent(new CustomEvent('chat-updated'))
-    return data.newConversationId
+    return newConversationId
   }
   return {
     messages,
