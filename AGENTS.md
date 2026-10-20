@@ -1,6 +1,6 @@
 # Agent Instructions
 
-Saul, A personal AI assistant agent you talk to over Telegram, web or Andriod. Runs on a server, accepts commands, reads and writes files, remembers things across sessions, and checks in on you with scheduled briefings. Based on OpenClaw architecture, but minimal and hackable.
+Saul is a self-hosted personal AI assistant with web and native Android clients. The Node.js backend runs agents through Pi-Durable. Keep the architecture simple: `server/` owns the API, agent execution, and storage; `web/` and `android/` own their clients. Start with `README.md` for setup and checks.
 
 ## Conversational style
 
@@ -19,9 +19,9 @@ Saul, A personal AI assistant agent you talk to over Telegram, web or Andriod. R
 - Check node_modules for external API types; don't guess.
 - **No inline imports** (`await import()`, `import("pkg").Type`, dynamic type imports). Top-level imports only.
 - Never remove or downgrade code to fix type errors from outdated deps; upgrade the dep instead.
-- Use only erasable TypeScript syntax (Node strip-only mode) in code checked by the root config (`packages/*/src`, `packages/*/test`, `packages/coding-agent/examples`): no parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`, or other constructs needing JS emit. Use explicit fields with constructor assignments.
+- Use only erasable TypeScript syntax in `server/` (Node strip-only mode): no parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`, or other constructs needing JS emit. Use explicit fields with constructor assignments.
 - Do not preserve backward compatibility unless the user asks for it.
-- **Use modern Node.js built-ins:** Actively look for and utilize the latest features from modern Node.js releases (v22+) rather than relying on outdated patterns or third-party packages.
+- **Use Node.js 24+ built-ins** rather than adding third-party packages for built-in functionality.
   - Use `node:sqlite` instead of `better-sqlite3`.
   - Use `process.loadEnvFile()` instead of `dotenv`.
   - Use `node test.ts` for running TypeScript natively instead of `tsx`, `ts-node`, or compiling.
@@ -37,16 +37,15 @@ Issues are tracked on GitHub using the `gh` CLI. See `docs/agents/issue-tracker.
 The default 5-role triage vocabulary is used. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
-Single-context layout (root GLOSSARY.md and docs/adr/). See `docs/agents/domain.md`.
+For domain terminology and architecture decision records, see `docs/agents/domain.md`.
 
 ## Android Client
 
 - The Android app must be completely identical to the web UI in terms of its design system and color theming.
 - Before planning or implementing Android work, read `docs/android-client-implementation-guide.md` and the Android CLI skill.
 
-## Pi-Durable Architecture
+## Pi-Durable and storage
 
-This project uses **Pi-Durable** for its autonomous agent execution engine.
+Before changing agent execution, tasks, approvals, or recovery, read `docs/durable-reliability.md` and the installed `node_modules/@earendil-works/pi-durable/README.md`. For database adapters and transactions, also read `docs/pi-libsql-storage.md`. Pi owns its own schema and execution model; adapt its APIs rather than duplicating them.
 
-If you need to understand how the backend runs agents, how Tasks execute, how the Durable Execution Harness persists conversations to SQLite, or how extension hooks like `beforeTool` work, you MUST read the comprehensive architecture guide located at:
-[docs/temp/pi-durable-guide.html](file:///C:/Users/dawar/projects/lali-template/docs/temp/pi-durable-guide.html)
+Development uses two local databases; production requires two distinct remote libSQL databases and one active backend process. Startup applies checked-in app migrations from `server/drizzle/`. Generate and review migration SQL with schema changes; keep database contents and credentials out of Git.

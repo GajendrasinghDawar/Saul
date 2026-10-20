@@ -43,7 +43,7 @@ startup, but schema creation does not import accounts or history.
 Generate and review app migration files with `npm run db:generate`; validate
 them with `npm run db:check`. Both commands force development mode. Startup
 applies the checked-in migration history and never runs schema push. See the
-[database setup guide](../README.md#database-setup) for existing databases without
+[database setup guide](local-development.md#database-setup) for existing databases without
 migration history. Review migration SQL and back up data before production
 upgrades; future destructive SQL is not made safe merely by running it at boot.
 

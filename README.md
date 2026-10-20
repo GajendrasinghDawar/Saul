@@ -2,6 +2,22 @@
 
 A personal AI assistant with web and native Android clients. A Node.js backend runs agents through Pi-Durable, with saved conversations, approvals, tasks, and scheduled work.
 
+Saul is self-hosted and under active development, not a hosted service. You bring an AI provider account and run one backend process. See [current limitations](#current-limitations) before relying on it daily.
+
+## Project map
+
+| Path | Responsibility |
+| --- | --- |
+| `server/` | Express API, authentication, agent execution, storage, and tests |
+| `server/drizzle/` | Checked-in app database migrations |
+| `web/` | React web client |
+| `android/` | Native Kotlin/Compose client |
+| `docs/` | Setup, architecture, and operational guides |
+| `download/` | Static APK download page for GitHub Pages |
+| `.github/workflows/` | Checks, releases, deployment, and download-page publishing |
+
+The root npm package owns backend dependencies and development commands. The web client has its own npm package; Android uses Gradle. Local databases live in untracked `data/`. There is no shared framework or additional service to set up for local text chat.
+
 ## Quick start: backend and web
 
 Requirements: Git and Node.js 24 LTS. Run in PowerShell, Linux, or WSL2:
@@ -69,11 +85,11 @@ On Linux, replace `.\android\gradlew.bat` with `bash android/gradlew`. If severa
 ## Checks
 
 ```sh
-npx tsc --noEmit
-node --test "server/test/*.test.ts" "web/test/*.test.ts"
-npm run db:check
-npm run build --prefix web
+npm test
+npm run check
 ```
+
+`test` runs backend and web logic tests. `check` checks backend types, migration history, and the production web build. Run both after installing root and web dependencies.
 
 ```powershell
 .\android\gradlew.bat -p android assembleDebug testDebugUnitTest lintDebug --console=plain
@@ -91,7 +107,20 @@ After the [one-time release setup](docs/releases.md):
 
 Workflows are included; publishing still requires GitHub configuration, a release-signing key, and real HTTPS server URLs. Release APKs connect to the backend selected at build time. Downloading does not create an account; the server administrator must grant access. Private repository releases require GitHub access and are not an anonymous sharing mechanism.
 
-Production currently targets one VPS process, two separate remote libSQL databases, and Caddy HTTPS. [Release/deployment instructions](docs/releases.md) cover configuration, upgrades, and recovery. Native push notifications and offline message queuing are not implemented. Android's server-settings panel still needs migration from the removed `/api/secrets` API; use web Settings for AI configuration.
+Production currently targets one VPS process, two separate remote libSQL databases, and Caddy HTTPS. [Release/deployment instructions](docs/releases.md) cover configuration, upgrades, and recovery.
+
+## Current limitations
+
+- Android does not implement push notifications or an offline message queue.
+- Android's server-settings panel still needs migration from the removed `/api/secrets` API; use web Settings for AI configuration.
+- Cloudflare Workers is not a supported deployment target. Remote storage is a direct connection, not local/cloud sync.
+- Run only one backend process against a storage pair. Back up both databases, encryption keys, attachment objects, and workspace files before upgrades.
+
+## Contributing
+
+Use [GitHub issues](https://github.com/GajendrasinghDawar/Saul/issues) for bugs and proposals. Keep pull requests focused, explain the behavior changed and how you checked it, and run the checks above. Include Android checks when changing the app. Never include credentials, databases, personal transcripts, or signing keys.
+
+The project uses the [ISC license](LICENSE). Bundled third-party assets retain their own license notices.
 
 ## More detail
 
@@ -100,5 +129,3 @@ Production currently targets one VPS process, two separate remote libSQL databas
 - [AI settings](docs/server-settings.md)
 - [Durable execution and restart recovery](docs/durable-reliability.md)
 - [Attachment storage and backups](docs/attachments.md)
-
-Code lives in `server/`, `web/`, and `android/`. App migrations live in `server/drizzle/`. Local databases live in untracked `data/`; never commit databases, credentials, or signing keys.

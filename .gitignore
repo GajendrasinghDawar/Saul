@@ -3,18 +3,20 @@ node_modules
 .env.*
 *.jks
 *.keystore
-local-turso.db
 *.log
-web/node_modules
 web/dist
-
-
-docs/temp/
-
-skills-lock.json
 *.sqlite*
 *.db
 saul-src.tar.gz
 
+# Local editor and agent tooling; keep the shared Android CLI guidance.
+.idea/
+.vscode/
+.DS_Store
+.agents/skills/*
+!.agents/skills/android-cli/
+skills-lock.json
 
+# Local learning material and scratch reports.
+docs/temp/
 docs/android-learning/

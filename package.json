@@ -1,21 +1,29 @@
 {
-  "name": "lali-template",
+  "name": "saul",
   "version": "1.0.0",
-  "description": "",
+  "private": true,
+  "description": "Self-hosted personal AI assistant with web and native Android clients",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "dev:backend": "cross-env NODE_ENV=development tsx watch server/server.ts",
+    "dev:backend": "cross-env NODE_ENV=development node --watch server/server.ts",
     "dev:web": "npm run dev --prefix web",
     "dev": "concurrently -n backend,web -c blue,magenta \"npm run dev:backend\" \"npm run dev:web\"",
+    "test": "node --test \"server/test/*.test.ts\" \"web/test/*.test.ts\"",
+    "check": "tsc --noEmit && npm run db:check && npm run build --prefix web",
     "db:generate": "cross-env NODE_ENV=development drizzle-kit generate --config=server/drizzle.config.ts",
     "db:check": "cross-env NODE_ENV=development drizzle-kit check --config=server/drizzle.config.ts",
-    "db:seed": "cross-env NODE_ENV=development tsx server/db/seed.ts",
+    "db:seed": "cross-env NODE_ENV=development node server/db/seed.ts",
     "format": "biome format --write .",
     "lint": "biome check .",
     "format:fix": "biome check --write ."
   },
-  "keywords": [],
-  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GajendrasinghDawar/Saul.git"
+  },
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1149.0",
@@ -27,7 +35,6 @@
     "better-auth": "^1.7.7",
     "cookie-parser": "^1.4.7",
     "csrf-csrf": "^4.0.3",
-    "dotenv": "^18.0.5",
     "drizzle-orm": "^0.45.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
@@ -42,7 +49,6 @@
     "concurrently": "^10.0.5",
     "cross-env": "^10.1.0",
     "drizzle-kit": "^0.31.11",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }

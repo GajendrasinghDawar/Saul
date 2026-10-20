@@ -59,7 +59,7 @@ The recommended first release path is:
 - **Android:** a signed APK on GitHub Releases, with a GitHub Pages download page linking to that asset. Keep the signing key backed up and reuse it for updates; increase `versionCode` for each release.
 - **Recovery:** back up both remote databases, the encryption key, attachment objects, and any workspace files. Test restore and interrupted-agent recovery before relying on the installation daily.
 
-`deploy.sh` now runs on the VPS with an immutable image digest. It does not upload secrets, delete volumes, or commit/push code. The old laptop-based PowerShell deployment is disabled. Follow the [production runbook](releases.md), not the development commands, to deploy.
+`deploy.sh` runs on the VPS with an immutable image digest. It does not upload secrets, delete volumes, or commit/push code. Follow the [production runbook](releases.md), not the development commands, to deploy.
 
 For WSL development, keep the checkout under the Linux filesystem (for example `~/projects/Saul`), install Node and a Linux Android SDK there, and run both `npm ci` commands again. Do not share Windows `node_modules`, SDK binaries, or Gradle build outputs with Linux. A Windows-hosted emulator requires separately configured ADB connectivity; a second source checkout is not required when WSL owns the builds. Keep secrets outside Git and back up the existing encryption key before moving data.
 
@@ -80,7 +80,7 @@ This repository is an active personal project. Some features need external servi
 - `docs/`: architecture, setup, and learning material.
 - Root `package.json` and its lockfile: backend dependencies and commands that run both clients and server tooling. Keep them here until the backend becomes a separate package.
 - Root `biome.json`, `tsconfig.json`, `.gitignore`, `.agents/`, `.github/`, `AGENTS.md`, and `README.md`: repository tooling and guidance. The root TypeScript config currently checks the backend.
-- Root `Dockerfile`, `docker-compose.yml`, and deploy scripts: deployment of the backend and built web client together.
+- Root `Dockerfile`, `docker-compose.yml`, and `deploy.sh`: deployment of the backend and built web client together.
 - Root `.env`: untracked bootstrap configuration. Run development and database commands from the repository root.
 - `data/`: local runtime databases, not source code. Database files and logs do not belong in the tracked root. Keep existing files until their use and backup requirements are known; a folder move must not move or delete runtime data.
 
@@ -102,11 +102,11 @@ Run the commands from the repository root. Replace each `<...>` placeholder. Kee
 
 ### Prerequisites
 
-- Node.js 22.19 or newer supported LTS, and npm. Pi-Durable needs Node.js 22.19 or newer. Tests use native TypeScript. The backend uses Node SQLite.
+- Node.js 24 LTS and npm. Tests use native TypeScript. The backend uses Node SQLite.
 - Root and web dependencies. Run these commands only for a new checkout:
 
 ```powershell
-Set-Location 'C:\Users\dawar\projects\Saul'
+Set-Location '<path-to-your-checkout>\Saul'
 npm ci
 npm ci --prefix web
 ```
@@ -197,7 +197,7 @@ For an **existing installation**, back up both databases and keys before deployi
 npm run dev
 ```
 
-This starts the backend in development mode (`tsx watch server/server.ts`) and Vite together. You can also run `npm run dev:backend` and `npm run dev:web` in separate terminals. Press Ctrl+C to stop them. AI changes in Settings apply without a restart; changes to `.env` require restarting the backend.
+This starts the backend in development mode (`node --watch server/server.ts`) and Vite together. You can also run `npm run dev:backend` and `npm run dev:web` in separate terminals. Press Ctrl+C to stop them. AI changes in Settings apply without a restart; changes to `.env` require restarting the backend.
 
 - Web: `http://localhost:5173`. If this port is busy, use the URL that Vite prints.
 - Health check: `http://localhost:3000/health`.
