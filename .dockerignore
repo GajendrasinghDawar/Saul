@@ -1,0 +1,17 @@
+**/node_modules
+.git
+.github
+.agents
+.amp
+.env
+.env.*
+data
+android
+docs
+download
+web/dist
+**/*.sqlite*
+**/*.db
+**/*.log
+**/*.jks
+**/*.keystore

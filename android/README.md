@@ -1,6 +1,6 @@
-# Lali Android client
+# Saul Android client
 
-Native Android client for the Lali Gateway. See `docs/android-client-implementation-guide.md`.
+Native Android client for the Saul backend. Start with the root [quick start](../README.md#android-development); see [release setup](../docs/releases.md) for signed APKs and GitHub Pages distribution. Internal package/property names still use `lali`.
 
 ## Toolchain (recorded 2026-09-30)
 
@@ -13,10 +13,10 @@ Native Android client for the Lali Gateway. See `docs/android-client-implementat
 | Kotlin | 2.4.20 |
 | Compose BOM | 2026.09.00 |
 | Navigation | Navigation 3 1.2.0 (stable; shipped by the official template) |
-| Ktor client | 3.6.0 (`Android` engine) |
+| Ktor client | 3.6.0 (`OkHttp` engine; cancellation does not disconnect platform HTTP connections on the UI thread) |
 | compileSdk / targetSdk | 37 |
 | minSdk | 24 (template default; no current dependency needs higher) |
-| JDK | `C:\Users\dawar\.jdks\jbr-17.0.14`; Kotlin/Java toolchain 17 |
+| JDK | Compatible Gradle runtime (CI uses JDK 21); Kotlin/Java toolchain 17 |
 
 The template was generated with older versions. Every version was then updated to the latest stable release that lint reported.
 
@@ -24,8 +24,8 @@ The template was generated with older versions. Every version was then updated t
 
 `BuildConfig.GATEWAY_BASE_URL`:
 
-- debug: `http://10.0.2.2:3000` (the emulator's address for the host's loopback interface; the Gateway binds to `127.0.0.1`).
-- release: empty unless you pass `-Plali.gatewayBaseUrl=https://...`.
+- debug: `http://10.0.2.2:3000` (the standard emulator's address for its host's loopback interface).
+- release: requires explicit HTTPS `-Plali.gatewayBaseUrl=...` and `-Plali.webBaseUrl=...`, a positive `-Psaul.versionCode=...`, `-Psaul.versionName=...`, and the four signing environment variables documented in the release guide. Invalid/missing configuration fails the release build.
 - physical debug device: run `adb reverse tcp:3000 tcp:3000` and build with `-Plali.gatewayBaseUrl=http://localhost:3000`.
 
 Only debug builds may use cleartext HTTP (`src/debug/res/xml/network_security_config.xml`). Release builds allow HTTPS only.
@@ -35,7 +35,7 @@ Only debug builds may use cleartext HTTP (`src/debug/res/xml/network_security_co
 Run from this directory in PowerShell:
 
 ```powershell
-$env:JAVA_HOME = 'C:\Users\dawar\.jdks\jbr-17.0.14'
+$env:JAVA_HOME = '<path-to-compatible-Gradle-JDK>'
 .\gradlew.bat assembleDebug testDebugUnitTest lintDebug --console=plain
 .\gradlew.bat connectedDebugAndroidTest --console=plain
 .\gradlew.bat installDebug --console=plain
@@ -43,6 +43,8 @@ android run --apks=app\build\outputs\apk\debug\app-debug.apk --device=emulator-5
 ```
 
 On Windows, `android emulator` is disabled, so start the AVD with `%LOCALAPPDATA%\Android\Sdk\emulator\emulator.exe -avd <name>`.
+
+On Linux/WSL, use `bash gradlew` instead of `.\gradlew.bat` and install a Linux SDK/JDK. Native Linux can run an accelerated emulator with KVM. For WSL, prefer a Windows-hosted emulator or a wireless ADB phone, with the device connection and backend networking configured explicitly. Do not reuse Windows SDK binaries or build outputs in Linux. Release builds should use `--no-configuration-cache` so signing configuration is not retained in the configuration cache.
 
 ## Implemented native slices
 

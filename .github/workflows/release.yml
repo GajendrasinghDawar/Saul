@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example 1.0.1 (no v prefix)'
+        required: true
+        type: string
+      version_code:
+        description: 'Android versionCode, greater than every previous release'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+      VERSION_CODE: ${{ inputs.version_code }}
+      GATEWAY_URL: ${{ vars.SAUL_GATEWAY_URL }}
+      WEB_URL: ${{ vars.SAUL_WEB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
+          (( VERSION_CODE <= 2100000000 ))
+          [[ -n "$GATEWAY_URL" && -n "$WEB_URL" ]]
+          # Android updates require a strictly increasing versionCode.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[].assets[]?.name' > /tmp/release-assets
+          highest=$(sed -n 's/^android-version-code-\([0-9]*\)\.txt$/\1/p' /tmp/release-assets | sort -n | tail -1)
+          if (( VERSION_CODE <= ${highest:-0} )); then
+            echo 'versionCode must be greater than all previous releases.' >&2
+            exit 1
+          fi
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo 'Version already exists. Choose a new release version.' >&2
+            exit 1
+          fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-37' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Restore release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/saul-release.jks"
+      - name: Build signed APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/saul-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          bash android/gradlew -p android assembleRelease --no-configuration-cache --console=plain \
+            "-Psaul.versionCode=$VERSION_CODE" "-Psaul.versionName=$VERSION" \
+            "-Plali.gatewayBaseUrl=$GATEWAY_URL" "-Plali.webBaseUrl=$WEB_URL"
+          cp android/app/build/outputs/apk/release/app-release.apk saul.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs saul.apk
+          sha256sum saul.apk > saul.apk.sha256
+          printf '%s\n' "$VERSION_CODE" > "android-version-code-$VERSION_CODE.txt"
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/saul-release.jks"
+      - uses: docker/setup-buildx-action@v3
+      - name: Container name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@v6
+        id: container
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.name }}:v${{ inputs.version }}
+      - name: Publish APK and deployment reference
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}@${{ steps.container.outputs.digest }}
+        run: |
+          printf '%s\n' "$IMAGE" > backend-image.txt
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "Saul $VERSION" \
+            --latest --generate-notes saul.apk saul.apk.sha256 backend-image.txt "android-version-code-$VERSION_CODE.txt"
+          echo "Backend image: \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"

@@ -95,6 +95,25 @@ class GatewayJourneyTest {
         }
     }
 
+    @Test fun signOutWhileAccountResponseIsPending() {
+        val context = fixtureContext()
+        FixtureGateway(holdAccount = true).use { gateway ->
+            val container = AppContainer(context, gateway.url)
+            runBlocking { container.tokenRepository.save("fixture-session") }
+            try {
+                compose.setContent { LaliTheme { MainNavigation(container) } }
+                waitForText("Fixture chat")
+                compose.onNodeWithText("Settings").performClick()
+                compose.waitUntil(10_000) { gateway.accountStarted }
+                compose.onNodeWithText("Sign out of this device").performScrollTo().performClick()
+                waitForText("Sign in with Web")
+                assertTrue(gateway.revoked)
+                assertNull(container.tokenRepository.tokenFlow.value)
+                assertFalse(File(context.noBackupFilesDir, "credential.bin").exists())
+            } finally { runBlocking { container.tokenRepository.clear() }; container.api.http.close() }
+        }
+    }
+
     private fun fixtureContext() = object : ContextWrapper(compose.activity.applicationContext) {
         override fun getNoBackupFilesDir(): File = File(baseContext.noBackupFilesDir, "gateway-journey").apply { mkdirs() }
     }
@@ -107,12 +126,13 @@ class GatewayJourneyTest {
     }
 }
 
-private class FixtureGateway(private val unauthorized: Boolean = false) : AutoCloseable {
+private class FixtureGateway(private val unauthorized: Boolean = false, private val holdAccount: Boolean = false) : AutoCloseable {
     private val server = ServerSocket(0)
     private val sockets = CopyOnWriteArrayList<Socket>()
     val url = "http://127.0.0.1:${server.localPort}"
     @Volatile var revoked = false
     @Volatile var failSignOut = false
+    @Volatile var accountStarted = false
     @Volatile private var sent = false
     @Volatile private var aborted = false
     init {
@@ -143,6 +163,13 @@ private class FixtureGateway(private val unauthorized: Boolean = false) : AutoCl
         }
         if (path == "/api/auth/sign-out" && failSignOut) {
             output.write("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".toByteArray()); return
+        }
+        if (path == "/api/auth/get-session" && holdAccount) {
+            output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100\r\nConnection: close\r\n\r\n{".toByteArray())
+            output.flush()
+            accountStarted = true
+            while (!server.isClosed && !socket.isClosed) Thread.sleep(20)
+            return
         }
         if (path.startsWith("/api/stream?conversationId=7")) {
             output.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n".toByteArray())

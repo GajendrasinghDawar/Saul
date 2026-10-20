@@ -28,13 +28,19 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           })
         } else {
           setIsAuthenticated(false)
-          navigate({ to: '/login' })
+          navigate({
+            to: '/login',
+            search: { redirect: window.location.pathname + window.location.search },
+          })
         }
       })
       .catch(() => {
         if (!active) return
         setIsAuthenticated(false)
-        navigate({ to: '/login' })
+        navigate({
+          to: '/login',
+          search: { redirect: window.location.pathname + window.location.search },
+        })
       })
     return () => { active = false }
   }, [navigate])

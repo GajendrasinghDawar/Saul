@@ -7,7 +7,7 @@ import io.github.gajendrasinghdawar.lali.data.conversations.GatewayConversationR
 import io.github.gajendrasinghdawar.lali.data.tasks.GatewayTaskRepository
 import io.github.gajendrasinghdawar.lali.data.settings.GatewaySettingsRepository
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.android.Android
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.sse.SSE
@@ -16,8 +16,7 @@ import kotlinx.serialization.json.Json
 
 class AppContainer(context: Context, gatewayBaseUrl: String) {
     val tokenRepository = TokenRepository(context)
-    private val httpClient = HttpClient(Android) {
-        engine { connectTimeout = 5_000; socketTimeout = 0 }
+    private val httpClient = HttpClient(OkHttp) {
         install(HttpTimeout) { connectTimeoutMillis = 5_000; requestTimeoutMillis = 30_000; socketTimeoutMillis = 30_000 }
         install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         install(SSE) { maxReconnectionAttempts = 0 }

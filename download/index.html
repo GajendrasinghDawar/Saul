@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Download the native Saul Android client and connect to your personal AI assistant.">
+    <title>Saul for Android</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111113; color: #eeeef0; }
+      body { margin: 0; padding: 48px 24px; }
+      main { max-width: 620px; margin: 8vh auto; }
+      .label { color: #b0b4ba; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+      h1 { font-size: clamp(36px, 7vw, 56px); line-height: 1.1; letter-spacing: -.04em; margin: 20px 0; }
+      p, li { line-height: 1.7; color: #b0b4ba; }
+      a { color: #ff8da4; text-underline-offset: 4px; }
+      a:focus-visible { outline: 2px solid #ff8da4; outline-offset: 5px; }
+      .download { display: inline-block; background: #e5484d; color: white; padding: 14px 22px; border-radius: 12px; text-decoration: none; font-weight: 600; margin: 16px 0; }
+      .download:hover { background: #dc3e42; }
+      section { margin-top: 36px; border-top: 1px solid #2e3135; padding-top: 20px; }
+      h2 { font-size: 20px; }
+      ol { padding-left: 22px; }
+      footer { margin-top: 32px; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="label">Personal AI assistant</div>
+      <h1>Saul, on your phone.</h1>
+      <p>A native Android client for your conversations, agent activity, and saved context. Your assistant runs on its own backend, not on this download site.</p>
+      <a class="download" href="https://github.com/GajendrasinghDawar/Saul/releases/latest/download/saul.apk">Download Android APK</a>
+      <p>Android 7.0 or newer. Direct installation, outside Google Play. The download becomes available after the first signed release is published.</p>
+      <section aria-labelledby="installation">
+        <h2 id="installation">Install and connect</h2>
+        <ol>
+          <li>Download the APK and open it on your phone. Android may ask you to allow installation from your browser or file manager.</li>
+          <li>Open Saul and choose <strong>Sign in with Web</strong>.</li>
+          <li>Sign in to the backend account, approve access, and return to Saul.</li>
+        </ol>
+        <p>The APK connects to the server selected for that release. You need an account on that server; downloading does not create one. Ask its administrator for access.</p>
+      </section>
+      <footer>
+        <a href="https://github.com/GajendrasinghDawar/Saul/releases/latest">Release notes and SHA-256 checksum</a>
+        <p>Install updates signed by the same publisher. For development or your own backend, see the <a href="https://github.com/GajendrasinghDawar/Saul#quick-start-backend-and-web">setup instructions</a>.</p>
+      </footer>
+    </main>
+  </body>
+</html>

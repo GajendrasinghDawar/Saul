@@ -1,7 +1,41 @@
+import java.net.URI
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
+}
+
+val releaseVersionCode = providers.gradleProperty("saul.versionCode")
+val releaseVersionName = providers.gradleProperty("saul.versionName")
+val signingStore = providers.environmentVariable("ANDROID_KEYSTORE_PATH")
+val signingStorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD")
+val signingAlias = providers.environmentVariable("ANDROID_KEY_ALIAS")
+val signingKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD")
+val gatewayBaseUrl = providers.gradleProperty("lali.gatewayBaseUrl")
+val webBaseUrl = providers.gradleProperty("lali.webBaseUrl")
+
+val validateReleaseConfiguration = tasks.register("validateReleaseConfiguration") {
+    doLast {
+        require(releaseVersionCode.orNull?.toIntOrNull()?.let { it > 0 } == true) {
+            "Release requires -Psaul.versionCode=<positive integer>; increase it for every update."
+        }
+        require(!releaseVersionName.orNull.isNullOrBlank()) {
+            "Release requires -Psaul.versionName=<version>."
+        }
+        listOf(gatewayBaseUrl, webBaseUrl).forEach { value ->
+            val uri = value.orNull?.let { URI(it) }
+            require(uri?.scheme == "https" && !uri.host.isNullOrBlank() &&
+                uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null) {
+                "Release requires HTTPS lali.gatewayBaseUrl and lali.webBaseUrl without credentials, queries or fragments."
+            }
+        }
+        require(listOf(signingStore, signingStorePassword, signingAlias, signingKeyPassword)
+            .all { !it.orNull.isNullOrBlank() }) {
+            "Release requires ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD."
+        }
+        require(file(signingStore.get()).isFile) { "Release keystore does not exist." }
+    }
 }
 
 android {
@@ -11,14 +45,20 @@ android {
         applicationId = "io.github.gajendrasinghdawar.lali"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = releaseVersionCode.orNull?.toIntOrNull() ?: 1
+        versionName = releaseVersionName.getOrElse("1.0")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // Override with -Plali.gatewayBaseUrl=... (for example http://localhost:3000 with `adb reverse tcp:3000 tcp:3000`).
-    val gatewayBaseUrl = providers.gradleProperty("lali.gatewayBaseUrl")
-    val webBaseUrl = providers.gradleProperty("lali.webBaseUrl")
+    signingConfigs {
+        create("release") {
+            storeFile = signingStore.orNull?.let { file(it) }
+            storePassword = signingStorePassword.orNull
+            keyAlias = signingAlias.orNull
+            keyPassword = signingKeyPassword.orNull
+        }
+    }
+
     buildTypes {
         debug {
             // 10.0.2.2 is the Android emulator's alias for the host loopback interface.
@@ -27,6 +67,7 @@ android {
         }
         release {
             // Release builds only permit HTTPS (see res/xml/network_security_config.xml).
+            signingConfig = signingConfigs.getByName("release")
             buildConfigField("String", "GATEWAY_BASE_URL", "\"${gatewayBaseUrl.getOrElse("")}\"")
             buildConfigField("String", "WEB_BASE_URL", "\"${webBaseUrl.getOrElse("")}\"")
             isMinifyEnabled = false
@@ -53,6 +94,10 @@ android {
 
 kotlin {
     jvmToolchain(17)
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(validateReleaseConfiguration)
 }
 
 dependencies {
@@ -97,7 +142,7 @@ dependencies {
 
   // Gateway HTTP
   implementation(libs.ktor.client.core)
-  implementation(libs.ktor.client.android)
+  implementation(libs.ktor.client.okhttp)
   implementation(libs.ktor.client.auth)
   implementation(libs.ktor.client.content.negotiation)
   implementation(libs.ktor.serialization.kotlinx.json)

@@ -1,5 +1,8 @@
 node_modules
 .env
+.env.*
+*.jks
+*.keystore
 local-turso.db
 *.log
 web/node_modules

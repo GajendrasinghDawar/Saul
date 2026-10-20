@@ -1,0 +1,72 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix web
+      - run: npx tsc --noEmit
+      - run: node --test server/test/*.test.ts web/test/*.test.ts
+      - run: npm run db:check
+      - run: npm run build --prefix web
+      - name: Build production container
+        run: docker build -t saul-ci .
+      - name: Verify native Node startup with disposable local storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name saul-ci -e NODE_ENV=test \
+            -e BETTER_AUTH_SECRET=ci-only-auth-secret-not-for-production \
+            -e COOKIE_SECRET=ci-only-cookie-secret-not-for-production \
+            -e CSRF_SECRET=ci-only-csrf-secret-not-for-production saul-ci
+          trap 'docker logs saul-ci; docker rm -f saul-ci' EXIT
+          for attempt in {1..30}; do
+            if docker exec saul-ci node -e "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-37' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: bash android/gradlew -p android assembleDebug testDebugUnitTest lintDebug --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
